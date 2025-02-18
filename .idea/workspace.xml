@@ -1,0 +1,407 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="dca796bf-b1b7-401e-a79d-e5f8639fd491" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/DoubleDip.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/dehazing_videos.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/images/fotolia.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/images/fotolia_watermark.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/images/mountain.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/net/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/net/noise.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/utils/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/utils/image_io.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/videos/cut_3s_haze_video.mp4" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/videos/cut_haze_video.mp4" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_core/videos/haze_video.mp4" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/app.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/deh_a_map.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/deh_fin.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/deh_ori.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/deh_t_map.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/seg_bg.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/seg_fg.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/seg_image.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/seg_learned_mask.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_ambiguous_1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_ambiguous_2.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_ambiguous_reflection.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_ambiguous_transmission.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_pre.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_reflection.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/trans_transmission.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_2.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_3.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_image.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_image_hint.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_mark.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_mark_hint.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_rm_1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_rm_2.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_rm_3.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/images/wat_rm_image.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/assets/styles/app.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/common/config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/common/utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/interfaces/dehazing_ui.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/interfaces/segmentation_ui.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/interfaces/transparency_ui.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/interfaces/watermark_ui.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/logic/dehazing_logic.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/logic/segmentation_logic.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/logic/transparency_logic.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/logic/watermark_logic.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/output/segmentation_bg_hint.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/double_dip_gradio/output/segmentation_fg_hint.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/figs/main_functionalities.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/bg_fg_prep.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/dehazing.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/dehazing.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/figs/Decomposition.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/fotolia.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/fotolia1.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/fotolia1.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/fotolia2.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/fotolia2.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/fotolia3.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/fotolia3.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/fotolia_watermark.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/hongkong.png" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/hongkong.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/input1.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/input1.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/input2.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/input2.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/texture12.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/texture1.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/texture16.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/texture2.jpg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/images/tiananmen.png" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/images/tiananmen.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/downsampler.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/net/downsampler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/layers.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/net/layers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/losses.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/net/losses.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/noise.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/optimization.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/skip_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/net/skip_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/unet_model.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/net/upsampler.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/segmentation.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/segmentation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transparency_separation.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/transparency_separation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/image_io.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/imresize.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/utils/imresize.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/watermarks_removal.py" beforeDir="false" afterPath="$PROJECT_DIR$/double_dip_core/watermarks_removal.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Ruben-Rodriguez-Redondo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Ruben-Rodriguez-Redondo/TFG-Software-DoubleDip.git&quot;,
+    &quot;accountId&quot;: &quot;950bacce-5c78-41b8-a09f-e6ca45ba03b5&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 3
+}</component>
+  <component name="ProjectId" id="2rUGfmmQ68BXUZAspLvt3p7DtqI" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.app (1).executor": "Run",
+    "Python.app.executor": "Run",
+    "Python.bg_fg_prep.executor": "Run",
+    "Python.dehazing.executor": "Run",
+    "Python.dehazing_ui.executor": "Run",
+    "Python.dehazing_videos (1).executor": "Run",
+    "Python.downsampler.executor": "Run",
+    "Python.image_io.executor": "Run",
+    "Python.imresize.executor": "Run",
+    "Python.layers.executor": "Run",
+    "Python.losses.executor": "Run",
+    "Python.noise.executor": "Run",
+    "Python.optimization.executor": "Run",
+    "Python.prueba (1).executor": "Run",
+    "Python.prueba.executor": "Run",
+    "Python.pruebas.executor": "Run",
+    "Python.quickStart.executor": "Run",
+    "Python.segmentation (1).executor": "Debug",
+    "Python.segmentation.executor": "Run",
+    "Python.skip_model.executor": "Run",
+    "Python.transparency_separation.executor": "Run",
+    "Python.ui_transparency_separation.executor": "Run",
+    "Python.unet_model.executor": "Run",
+    "Python.upsampler.executor": "Run",
+    "Python.watermarks_removal.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/user/OneDrive - Universidad Rey Juan Carlos/Año 2024-2025/Segundo Cuatri/TFG-Software/DoubleDip/double_dip_core/output_scaled",
+    "settings.editor.selected.configurable": "preferences.keymap"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_core\output_scaled" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_gradio2" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\output_scaled" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_gradio\src" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\figs" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_core" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_core\videos" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\functionalities" />
+      <recent name="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_gradio\common" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.app">
+    <configuration default="true" type="PythonConfigurationType" factoryName="Python">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="app" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_gradio" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/double_dip_gradio/app.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="dehazing" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_core" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/double_dip_core/dehazing.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="dehazing_videos (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_core" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/double_dip_core/dehazing_videos.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="dehazing_videos" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_core/utils" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_core\dehazing_videos.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="dehazing_videos" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_core" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="C:\Users\user\OneDrive - Universidad Rey Juan Carlos\Año 2024-2025\Segundo Cuatri\TFG-Software\DoubleDip\double_dip_core\dehazing_videos.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="segmentation" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="DoubleDip" />
+      <selectedOptions>
+        <option name="beforeRunTasks" />
+      </selectedOptions>
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="SDK_NAME" value="Python 3.10 (DoubleDip)" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/double_dip_core" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/double_dip_core/segmentation.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.app" />
+        <item itemvalue="Python.segmentation" />
+        <item itemvalue="Python.dehazing_videos (1)" />
+        <item itemvalue="Python.dehazing" />
+        <item itemvalue="Python.dehazing_videos" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-6a3326d57233-c546a90a8094-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-242.24807.21" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="dca796bf-b1b7-401e-a79d-e5f8639fd491" name="Changes" comment="" />
+      <created>1736606346233</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1736606346233</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/double_dip_core/segmentation.py</url>
+          <line>84</line>
+          <option name="timeStamp" value="13" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>

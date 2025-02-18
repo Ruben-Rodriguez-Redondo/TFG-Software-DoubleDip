@@ -1,0 +1,22 @@
+.grid-wrap.svelte-842rpi.svelte-842rpi {
+    overflow-y: hidden !important;
+    min-height: fit-content;
+    max-height: fit-content;
+}
+
+.gr-button-custom {
+    max-width: 160px !important;
+    align-self: center;
+}
+.gr-button-custom-stop {
+    max-width: 160px !important;
+    align-self: center;
+    background-color: #FF0000;
+}
+.gr-column {
+    background-color: #282828 !important;
+}
+
+.input-images{
+    max-width: fit-content;
+}
