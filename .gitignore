@@ -1,0 +1,31 @@
+# 🔹 Python bytecode files
+**/__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.dll
+
+# 🔹 Virtual environments
+venv/
+*.venv
+
+.idea/
+*.sublime-workspace
+
+# 🔹 Sistem files
+.DS_Store
+Thumbs.db
+
+# 🔹 Logs y archivos temporales
+logs/
+*.log
+*.out
+*.tmp
+*.swp
+
+
+# 🔹 Gradio auto-generated
+gradio_cached_examples/
+
+# 🔹 Specific files from the project
+/double_dip_core/output/

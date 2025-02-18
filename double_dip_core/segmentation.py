@@ -45,7 +45,7 @@ def obtain_bg_fg_segmentation_hints(image):
     s = image.copy()
     s = np.transpose(s, (1, 2, 0))
 
-    # Convertir la imagen en el rango [0, 1] a [0, 255]
+    # Convert image from [0, 1] to [0, 255]
     s = (s * 255).astype(np.uint8)
     s = cv2.cvtColor(s, cv2.COLOR_RGB2GRAY)
 
@@ -55,51 +55,16 @@ def obtain_bg_fg_segmentation_hints(image):
     )
     print(f"Otsu threshold: {otsu_threshold}")
 
-    # Consider fg the brightness areas (put them in white)
     fg = s.copy()
     fg[s > otsu_threshold] = 255
     fg[s <= otsu_threshold] = 0
-    fg_filename = os.path.join("output", f"segmentation_fg_hint.jpg")
-    cv2.imwrite(fg_filename, fg)
 
     bg = s.copy()
-    # Consider bg the darkness areas (put them in white)
     bg[s > otsu_threshold] = 0
     bg[s <= otsu_threshold] = 255
-    bg_filename = os.path.join("output", f"segmentation_bg_hint.jpg")
-    cv2.imwrite(bg_filename, bg)
 
     return fg, bg
 
-def obtain_bg_fg_segmentation_hints_2(image):
-    os.makedirs("output", exist_ok=True)
-    s = image.copy()
-    s = np.transpose(s, (1, 2, 0))
-
-    # Convertir la imagen en el rango [0, 1] a [0, 255]
-    s = (s * 255).astype(np.uint8)
-
-    s = cv2.cvtColor(s, cv2.COLOR_RGB2GRAY)
-
-    ## Foreground hint ##
-    fg = cv2.equalizeHist(s)
-
-    # Consider fg the brightness areas (put them in white)
-    fg[fg > 255 - 15.5] = 255
-    fg[fg <= 255 - 15.5] = 0
-    fg_filename = os.path.join("output", f"segmentation_fg_hint.jpg")
-    cv2.imwrite(fg_filename, fg)
-
-    ## Background hint ##
-    s = cv2.equalizeHist(s)
-    bg = np.zeros_like(s)
-    # Consider bg the darkness areas (put them in white)
-    bg[s > 15.5] = 0
-    bg[s <= 15.5] = 255
-    bg_filename = os.path.join("output", f"segmentation_bg_hint.jpg")
-    cv2.imwrite(bg_filename, bg)
-
-    return fg, bg
 
 
 SegmentationResult = namedtuple("SegmentationResult",
@@ -307,6 +272,9 @@ class Segmentation(object):
         save_image(self.image_name + "_mask", self.best_result.mask)
         learned_image =self.best_result.left *self.best_result.learned_mask + (1-self.best_result.learned_mask) *self.best_result.right
         save_image(self.image_name + "_learned_image",learned_image)
+        save_image("fg_hint",self.fg_hint)
+        save_image("bg_hint",self.bg_hint)
+
 
     def _update_result_closure(self):
         self._finalize_iteration()
@@ -476,8 +444,8 @@ def main_segmentation(image_path, conf_params={}):
 if __name__ == "__main__":
     conf_params = {
         "show_every": 500,
-        "first_step_iter_num": 1000,
-        "second_step_iter_num": 2000,
+        "first_step_iter_num": 10,
+        "second_step_iter_num": 30,
     }
 
     main_segmentation('images/mountain.jpg', conf_params=conf_params)

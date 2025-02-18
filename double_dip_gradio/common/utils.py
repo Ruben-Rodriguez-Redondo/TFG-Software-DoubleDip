@@ -1,5 +1,4 @@
 import tempfile
-
 import gradio as gr
 import numpy as np
 from PIL import Image
@@ -61,16 +60,12 @@ def get_app_images(images_path):
                           (f"{images_path}/trans_ambiguous_2.png", "Input 2"),
                           (f"{images_path}/trans_ambiguous_reflection.png", "Reflection layer"),
                           (f"{images_path}/trans_ambiguous_transmission.png", "Transmission layer")],
-                  "no_amb": [f"{images_path}/trans_pre.png", f"{images_path}/trans_reflection.png",
-                             f"{images_path}/trans_transmission.png"]
                   },
         "wat": {
             "hint": [(f"{images_path}/wat_image.png", "Input 1"),
                      (f"{images_path}/wat_image_hint.png", "Input 2 (Hint)"),
                      (f"{images_path}/wat_rm_image.png", "Clean input"),
-                     (f"{images_path}/wat_mark_hint.png", "Watermark")],
-            "no_hint": [f"{images_path}/wat_1.png", f"{images_path}/wat_2.png", f"{images_path}/wat_3.png",
-                        f"{images_path}/wat_rm_1.png", f"{images_path}/wat_rm_2.png", f"{images_path}/wat_rm_3.png"]
+                     (f"{images_path}/wat_mark_hint.png", "Watermark")]
         },
         "deh": [(f"{images_path}/deh_ori.png", "Haze image"), (f"{images_path}/deh_t_map.png", "A-Map"),
                 (f"{images_path}/deh_a_map.png", "Regularized T-MAP"), (f"{images_path}/deh_fin.png", "Dehaze image")]

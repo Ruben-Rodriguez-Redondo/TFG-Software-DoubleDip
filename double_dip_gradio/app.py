@@ -1,3 +1,4 @@
+import json
 import gradio as gr
 
 from double_dip_gradio.common.utils import change_scene, get_button_params, get_gallery_params, get_app_images
@@ -6,11 +7,15 @@ from double_dip_gradio.interfaces.segmentation_ui import get_segmentation_ui
 from double_dip_gradio.interfaces.transparency_ui import get_transparency_separation_ui
 from double_dip_gradio.interfaces.watermark_ui import get_watermarks_removal_ui
 
+
 # Todo add stop button
 # Todo change iter params names for iteration or itr (a not reserved word), and put in every one
 # the same name same as step and the format of the return images
 # Todo order the methods in the core mains (step_optimization_clousru, finalize_iteration, it.._plot_clousure,...
 # Todo complete config.py
+with open('common/config.json', 'r') as f:
+    config = json.load(f)
+
 css = "assets/styles/app.css"
 imgs = get_app_images("assets/images")
 gallery_params = get_gallery_params()
@@ -54,7 +59,7 @@ with gr.Blocks(css_paths=css) as app:
 
 
 def launch():
-    app.launch()
+    app.launch(**config)
 
 
 if __name__ == "__main__":
