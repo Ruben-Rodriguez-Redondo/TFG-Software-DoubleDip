@@ -12,7 +12,7 @@ from double_dip_gradio.interfaces.watermark_ui import get_watermarks_removal_ui
 # Todo change iter params names for iteration or itr (a not reserved word), and put in every one
 # the same name same as step and the format of the return images
 # Todo order the methods in the core mains (step_optimization_clousru, finalize_iteration, it.._plot_clousure,...
-# Todo complete config.py
+# Todo maybe add cpu execution
 with open('common/config.json', 'r') as f:
     config = json.load(f)
 

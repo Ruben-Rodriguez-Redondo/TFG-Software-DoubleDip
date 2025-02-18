@@ -41,7 +41,6 @@ def otsu_intraclass_variance(image, threshold):
 
 
 def obtain_bg_fg_segmentation_hints(image):
-    os.makedirs("output", exist_ok=True)
     s = image.copy()
     s = np.transpose(s, (1, 2, 0))
 
@@ -53,7 +52,6 @@ def obtain_bg_fg_segmentation_hints(image):
         range(np.min(s), np.max(s) + 1),
         key=lambda th: otsu_intraclass_variance(s, th),
     )
-    print(f"Otsu threshold: {otsu_threshold}")
 
     fg = s.copy()
     fg[s > otsu_threshold] = 255
@@ -444,8 +442,8 @@ def main_segmentation(image_path, conf_params={}):
 if __name__ == "__main__":
     conf_params = {
         "show_every": 500,
-        "first_step_iter_num": 10,
-        "second_step_iter_num": 30,
+        "first_step_iter_num": 1000,
+        "second_step_iter_num": 1000,
     }
 
     main_segmentation('images/mountain.jpg', conf_params=conf_params)

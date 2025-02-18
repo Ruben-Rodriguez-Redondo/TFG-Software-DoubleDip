@@ -21,7 +21,7 @@ image segmentation, watermark removal, transparency separation and dehazing, all
 Follow these steps to set up the project:  
 
 ### 1️⃣ Install Python 3.10  
-Make sure you have **Python >= 3.10** installed (version 3.10 recommended). Can be downloaded it from the official site:  
+Make sure you have **Python 3.10** installed (probably higher versions will work to). Can be downloaded from the official site:  
 🔗 [Python Downloads](https://www.python.org/downloads/)  
 
 To check your Python version, run in the local terminal:  
@@ -31,18 +31,15 @@ python --version
 ### 2️⃣ Clone the repository
 ```
 git clone https://github.com/Ruben-Rodriguez-Redondo/TFG-Software-DoubleDip 
-cd DoubleDIP  
+cd TFG-Software-DoubleDip  
 ```
 ### 3️⃣ ️Install dependencies
-Two ways, execute in the root directory (DoubleDIP):
+**It's necessary to have a GPU compatible with cuda version 12.6 and use Linux or Windows as OS**.
+More details [here](https://pytorch.org/). \
+Create a virtual environment, activated (consult the IDE or shell guide) and execute:
 ```
-pip install -r requirements.txt  
+pip install . 
 ```
-or 
-```
-pip setup.py .
-```
-Executing only one is enough.
 
 ## Usage 💡
 The code is composed for two main modules, the first one, double_dip_core mainly based in

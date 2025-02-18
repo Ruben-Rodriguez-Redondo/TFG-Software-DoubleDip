@@ -402,6 +402,6 @@ if __name__ == "__main__":
     # The gt_ambient is taken from Bahat's code (https://github.com/YuvalBahat/Dehazing-Airlight-estimation)
     conf_params = {
         "gt_ambient": np.array([0.71863767, 0.70432067, 0.62480165]),  # Can be None
-        "num_iter": 5000
+        "num_iter": 2000
     }
     main_dehaze("images/hongkong.png", conf_params)

@@ -29,3 +29,6 @@ gradio_cached_examples/
 
 # 🔹 Specific files from the project
 /double_dip_core/output/
+/DoubleDIP.egg-info/
+/build/
+/double_dip_gradio/output/
