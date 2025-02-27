@@ -2,5 +2,10 @@
   "server_name": "127.0.0.1",
   "server_port": 7860,
   "share": false,
-  "inbrowser": false
+  "inbrowser": false,
+  "strict_cors": false,
+  "state_session_capacity": 1,
+  "show_api": false,
+  "ssl_verify": false,
+  "max_threads": 100
 }

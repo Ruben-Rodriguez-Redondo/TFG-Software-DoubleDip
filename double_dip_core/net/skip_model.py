@@ -187,3 +187,30 @@ def skip_mask(
     if need_sigmoid:
         model.add(nn.Sigmoid())
     return model
+
+
+def set_gpu_or_cpu_and_dtype(use_gpu=True, gpu_index=0, torch_dtype=torch.float32):
+    """
+    Sets torch gpu or cpy and dtype
+    Args:
+        use_gpu (boolean): whether it uses gpu or not (cpu)
+        gpu_index (int): Default is 0, indicates which gpu use if there's multiple options
+        torch_dtype (torch.dtype): Posible values: torch.float16, torch.float32, torch.float64
+    """
+    try:
+        if use_gpu:
+            if torch.cuda.is_available():
+                torch.set_default_device("cuda")
+                torch.cuda.set_device(f'cuda:{gpu_index}')
+            else:
+                print("No GPU available found, setting cpu")
+                torch.set_default_device("cpu")
+        else:
+            torch.set_default_device("cpu")
+        if torch_dtype == torch.float16:
+            print(f'Torch type {torch_dtype} is unstable, it could give nans results')
+        torch.set_default_dtype(torch_dtype)
+        print(f'Torch device: {torch.get_default_device()}')
+        print(f'Torch type: {torch.get_default_dtype()}')
+    except Exception as e:
+        raise ValueError(f"Invalid arguments, error: {e}")

@@ -2,7 +2,7 @@ import sys
 from collections import namedtuple
 
 from cv2.ximgproc import guidedFilter
-from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+from skimage.metrics import structural_similarity
 
 from double_dip_core.net import *
 from double_dip_core.net.downsampler import *
@@ -13,31 +13,24 @@ from double_dip_core.utils.image_io import *
 
 def otsu_intraclass_variance(image, threshold):
     """
-    Calcula la varianza intra-clase de Otsu para un umbral dado.
-    Si todas las intensidades están en una sola clase, el resultado será NaN pero será manejado con np.nansum.
-
+    Compute otsu intra class variance given a threshold
     Args:
-        image (numpy.ndarray): Imagen en escala de grises.
-        threshold (int): Umbral para la segmentación.
+        image (numpy.ndarray): Grayscale image
+        threshold (int): Segmentation threshold
 
     Returns:
-        float: Varianza intra-clase.
+        float: Intra-class variance
     """
-    # Definir clases de píxeles
     foreground = image >= threshold
     background = image < threshold
 
-    # Pesos (proporción de píxeles en cada clase)
     w_fg = np.sum(foreground) / image.size
     w_bg = np.sum(background) / image.size
 
-    # Si alguna de las clases está vacía, la varianza debe ser 0
     var_fg = np.var(image[foreground]) if w_fg > 0 else 0
     var_bg = np.var(image[background]) if w_bg > 0 else 0
 
-    # Varianza intra-clase
     return w_fg * var_fg + w_bg * var_bg
-
 
 
 def obtain_bg_fg_segmentation_hints(image):
@@ -49,7 +42,7 @@ def obtain_bg_fg_segmentation_hints(image):
     s = cv2.cvtColor(s, cv2.COLOR_RGB2GRAY)
 
     otsu_threshold = min(
-        range(np.min(s), np.max(s) + 1),
+        range(int(np.min(s)), (int(np.max(s)) + 1)),
         key=lambda th: otsu_intraclass_variance(s, th),
     )
 
@@ -64,12 +57,10 @@ def obtain_bg_fg_segmentation_hints(image):
     return fg, bg
 
 
-
 SegmentationResult = namedtuple("SegmentationResult",
-                                ['mask', 'learned_mask', 'left', 'right', 'psnr'])
+                                ['mask', 'learned_mask', 'left', 'right', 'ssim'])
 
 
-# Todo remove no_hints parts, always use hints
 class Segmentation(object):
     def __init__(self, image_name, image, plot_during_training=True,
                  first_step_iter_num=2000,
@@ -82,8 +73,6 @@ class Segmentation(object):
         self.bg_hint = bg_hint
 
         if bg_hint is None or fg_hint is None:
-            # Todo maybe should apply before  Context-Aware Saliency Detection,
-            #  by Gofman et al
             fg, bg = obtain_bg_fg_segmentation_hints(self.image)
             self.fg_hint = pil_to_np(fg)
             self.bg_hint = pil_to_np(bg)
@@ -92,6 +81,7 @@ class Segmentation(object):
         self.plot_during_training = plot_during_training
         self.downsampling_factor = downsampling_factor
         self.downsampling_number = downsampling_number
+        self.ssims = []
         self.mask_net = None
         self.show_every = show_every
         self.left_net = None
@@ -116,6 +106,8 @@ class Segmentation(object):
         self.current_result = None
         self.best_result = None
         self.learning_rate = 0.001
+        self.device =torch.get_default_device()
+        self.dtype =torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -134,26 +126,32 @@ class Segmentation(object):
         """
         self.images = get_imresize_downsampled(self.image, downsampling_factor=self.downsampling_factor,
                                                downsampling_number=self.downsampling_number)
-        self.images_torch = [np_to_torch(image).type(torch.cuda.FloatTensor) for image in self.images]
+        self.images_torch = [np_to_torch(image).to(dtype=self.dtype, device=self.device)
+                             for image in self.images]
         assert self.bg_hint.shape[1:] == self.image.shape[1:], (self.bg_hint.shape[1:], self.image.shape[1:])
         self.bg_hints = get_imresize_downsampled(self.bg_hint, downsampling_factor=self.downsampling_factor,
                                                  downsampling_number=self.downsampling_number)
-        self.bg_hints_torch = [np_to_torch(bg_hint).type(torch.cuda.FloatTensor) for bg_hint in self.bg_hints]
+        self.bg_hints_torch = [
+            np_to_torch(bg_hint).to(dtype=self.dtype, device=self.device) for bg_hint in
+            self.bg_hints]
 
         assert self.fg_hint.shape[1:] == self.image.shape[1:]
         self.fg_hints = get_imresize_downsampled(self.fg_hint, downsampling_factor=self.downsampling_factor,
                                                  downsampling_number=self.downsampling_number)
-        self.fg_hints_torch = [np_to_torch(fg_hint).type(torch.cuda.FloatTensor) for fg_hint in self.fg_hints]
+        self.fg_hints_torch = [
+            np_to_torch(fg_hint).to(dtype=self.dtype, device=self.device) for fg_hint in
+            self.fg_hints]
 
     def _init_losses(self):
         """
         Initializes loss functions for optimization.
         """
-        data_type = torch.cuda.FloatTensor
-        self.l1_loss = nn.L1Loss().type(data_type)
-        self.extended_l1_loss = ExtendedL1Loss().type(data_type)
-        self.gradient_loss = GradientLoss().type(data_type)
-        self.gray_loss = GrayLoss().type(data_type)
+        dtype = self.dtype
+        device = self.device
+        self.l1_loss = nn.L1Loss().to(dtype=dtype, device=device)
+        self.extended_l1_loss = ExtendedL1Loss().to(dtype=dtype, device=device)
+        self.gradient_loss = GradientLoss().to(dtype=dtype, device=device)
+        self.gray_loss = GrayLoss().to(dtype=dtype, device=device)
 
     def _init_nets(self):
         """
@@ -173,7 +171,7 @@ class Segmentation(object):
             filter_size_up=3,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.left_net = left_net.type(torch.cuda.FloatTensor)
+        self.left_net = left_net.to(dtype=self.dtype, device=self.device)
 
         right_net = skip(
             self.input_depth, 3,
@@ -185,7 +183,7 @@ class Segmentation(object):
             filter_size_up=3,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.right_net = right_net.type(torch.cuda.FloatTensor)
+        self.right_net = right_net.to(dtype=self.dtype, device=self.device)
 
         mask_net = skip_mask(
             self.input_depth, 1,
@@ -197,7 +195,7 @@ class Segmentation(object):
             upsample_mode='bilinear',
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.mask_net = mask_net.type(torch.cuda.FloatTensor)
+        self.mask_net = mask_net.to(dtype=self.dtype, device=self.device)
 
     def _init_parameters(self):
         """
@@ -214,13 +212,15 @@ class Segmentation(object):
         input_type = 'noise'
         self.left_net_inputs = [get_noise(self.input_depth,
                                           input_type,
-                                          (image.shape[2], image.shape[3])).type(torch.cuda.FloatTensor).detach()
+                                          (image.shape[2], image.shape[3])).to(dtype=self.dtype,
+                                                                               device=self.device).detach()
                                 for image in self.images_torch]
         self.right_net_inputs = self.left_net_inputs
         input_type = 'noise'
         self.mask_net_inputs = [get_noise(self.input_depth,
                                           input_type,
-                                          (image.shape[2], image.shape[3])).type(torch.cuda.FloatTensor).detach()
+                                          (image.shape[2], image.shape[3])).to(dtype=self.dtype,
+                                                                               device=self.device).detach()
                                 for image in self.images_torch]
 
     def optimize(self):
@@ -240,7 +240,7 @@ class Segmentation(object):
             if self.plot_during_training:
                 self._iteration_plot_closure(j, 1)
             optimizer.step()
-        self._update_result_closure()
+        self._update_result_closure(1)
         if self.plot_during_training:
             self._step_plot_closure(1)
 
@@ -255,77 +255,9 @@ class Segmentation(object):
             if self.plot_during_training:
                 self._iteration_plot_closure(j, 2)
             optimizer.step()
-        self._update_result_closure()
+        self._update_result_closure(2)
         if self.plot_during_training:
             self._step_plot_closure(2)
-
-    def finalize(self):
-        """
-        Finalizes the segmentation process and saves the results.
-        """
-        save_image(self.image_name + "_left", self.best_result.left)
-        save_image(self.image_name + "_learned_mask", self.best_result.learned_mask)
-        save_image(self.image_name + "_right", self.best_result.right)
-        save_image(self.image_name + "_original", self.images[0])
-        save_image(self.image_name + "_mask", self.best_result.mask)
-        learned_image =self.best_result.left *self.best_result.learned_mask + (1-self.best_result.learned_mask) *self.best_result.right
-        save_image(self.image_name + "_learned_image",learned_image)
-        save_image("fg_hint",self.fg_hint)
-        save_image("bg_hint",self.bg_hint)
-
-
-    def _update_result_closure(self):
-        self._finalize_iteration()
-        self._fix_mask()
-        self.current_result = SegmentationResult(mask=self.fixed_masks[0],
-                                                 left=torch_to_np(self.left_net_outputs[0]),
-                                                 right=torch_to_np(self.right_net_outputs[0]),
-                                                 learned_mask=torch_to_np(self.mask_net_outputs[0]),
-                                                 psnr=self.current_psnr)
-        if self.best_result is None or self.best_result.psnr <= self.current_result.psnr:
-            self.best_result = self.current_result
-
-    def _fix_mask(self):
-        """
-        fixing the masks using soft matting
-        :return:
-        """
-        masks_np = [torch_to_np(mask) for mask in self.mask_net_outputs]
-        new_mask_nps = [np.array([guidedFilter(image_np.transpose(1, 2, 0).astype(np.float32),
-                                               mask_np[0].astype(np.float32), 50, 1e-4)])
-                        for image_np, mask_np in zip(self.images, masks_np)]
-
-        def to_bin(x):
-            v = np.zeros_like(x)
-            v[x > 0.5] = 1
-            return v
-
-        self.fixed_masks = [to_bin(m) for m in new_mask_nps]
-
-    def _initialize_any_step(self, iteration):
-        if iteration == self.second_step_iter_num - 1:
-            reg_noise_std = 0
-        elif iteration < 1000:
-            reg_noise_std = (1 / 1000.) * (iteration // 100)
-        else:
-            reg_noise_std = 1 / 1000.
-        right_net_inputs = []
-        left_net_inputs = []
-        mask_net_inputs = []
-        # creates left_net_inputs and right_net_inputs by adding small noise
-        for left_net_original_input, right_net_original_input, mask_net_original_input \
-                in zip(self.left_net_inputs, self.right_net_inputs, self.mask_net_inputs):
-            left_net_inputs.append(
-                left_net_original_input + (left_net_original_input.clone().normal_() * reg_noise_std))
-            right_net_inputs.append(
-                right_net_original_input + (right_net_original_input.clone().normal_() * reg_noise_std))
-            mask_net_inputs.append(
-                mask_net_original_input + (mask_net_original_input.clone().normal_() * reg_noise_std))
-        # applies the nets
-        self.left_net_outputs = [self.left_net(left_net_input) for left_net_input in left_net_inputs]
-        self.right_net_outputs = [self.right_net(right_net_input) for right_net_input in right_net_inputs]
-        self.mask_net_outputs = [self.mask_net(mask_net_input) for mask_net_input in mask_net_inputs]
-        self.total_loss = 0
 
     def _step1_optimization_closure(self, iteration):
         """
@@ -380,15 +312,41 @@ class Segmentation(object):
             self.total_loss += (0.001 * (iteration // 100)) * self.current_gradient
         self.total_loss.backward(retain_graph=True)
 
+    def _initialize_any_step(self, iteration):
+        if iteration == self.second_step_iter_num - 1:
+            reg_noise_std = 0
+        elif iteration < 1000:
+            reg_noise_std = (1 / 1000.) * (iteration // 100)
+        else:
+            reg_noise_std = 1 / 1000.
+        right_net_inputs = []
+        left_net_inputs = []
+        mask_net_inputs = []
+        # creates left_net_inputs and right_net_inputs by adding small noise
+        for left_net_original_input, right_net_original_input, mask_net_original_input \
+                in zip(self.left_net_inputs, self.right_net_inputs, self.mask_net_inputs):
+            left_net_inputs.append(
+                left_net_original_input + (left_net_original_input.clone().normal_() * reg_noise_std))
+            right_net_inputs.append(
+                right_net_original_input + (right_net_original_input.clone().normal_() * reg_noise_std))
+            mask_net_inputs.append(
+                mask_net_original_input + (mask_net_original_input.clone().normal_() * reg_noise_std))
+        # applies the nets
+        self.left_net_outputs = [self.left_net(left_net_input) for left_net_input in left_net_inputs]
+        self.right_net_outputs = [self.right_net(right_net_input) for right_net_input in right_net_inputs]
+        self.mask_net_outputs = [self.mask_net(mask_net_input) for mask_net_input in mask_net_inputs]
+        self.total_loss = 0
+
     def _finalize_iteration(self):
         left_out_np = torch_to_np(self.left_net_outputs[0])
         right_out_np = torch_to_np(self.right_net_outputs[0])
         original_image = self.images[0]
         mask_out_np = torch_to_np(self.mask_net_outputs[0])
-        self.current_psnr = compare_psnr(original_image, mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np)
-        # Todo, remove this shit, and check the psnr because probably depend on the image size, and maybe change it for reduce on plateu
-        if self.current_psnr > 30:
-            self.second_step_done = False
+        self.current_ssim = structural_similarity(original_image.astype(mask_out_np.dtype),
+                                     mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np, channel_axis=0,
+                                     data_range=1.0)
+
+        self.ssims.append(self.current_ssim)
 
     def _iteration_plot_closure(self, iter_number, step_number):
         """
@@ -402,33 +360,83 @@ class Segmentation(object):
             sys.stdout.write(f'\r Step {step_number} Iteration {iter_number:5d} '
                              f'total_loss {self.total_loss.item():.5f} '
                              f'grad {self.current_gradient.item():.5f} '
-                             f'PSNR {self.current_psnr:.5f}')
+                             f'SSIM {self.current_ssim:.5f}')
         else:
             sys.stdout.write(f'\rStep {step_number} Iteration {iter_number:5d} '
                              f'total_loss {self.total_loss.item():.5f} '
-                             f'PSNR {self.current_psnr:.5f}')
+                             f'SSIM {self.current_ssim:.5f}')
         sys.stdout.flush()
 
         if iter_number % self.show_every == self.show_every - 1:
             self._plot_with_name(iter_number, step_number)
 
-    def _step_plot_closure(self, step_number):
-        self._plot_with_name("final", step_number)
+    def _update_result_closure(self,step):
+        self._finalize_iteration()
+        self._fix_mask()
+        self.current_result = SegmentationResult(mask=self.fixed_masks[0],
+                                                 left=torch_to_np(self.left_net_outputs[0]),
+                                                 right=torch_to_np(self.right_net_outputs[0]),
+                                                 learned_mask=torch_to_np(self.mask_net_outputs[0]),
+                                                 ssim=self.current_ssim)
+        if self.best_result is None or self.best_result.ssim <= self.current_result.ssim:
+            self.best_result = self.current_result
+        if step == 1:
+            num_iters = self.first_step_iter_num
+        else:
+            num_iters = self.second_step_iter_num
 
-    def _plot_with_name(self, iter, step):
+        save_graph(self.image_name + "_step_{}_ssim".format(step), self.ssims, num_iters)
+        self.ssims = []
+
+    def _fix_mask(self):
+        """
+        fixing the masks using soft matting
+        :return:
+        """
+        masks_np = [torch_to_np(mask) for mask in self.mask_net_outputs]
+        new_mask_nps = [np.array([guidedFilter(image_np.transpose(1, 2, 0).astype(np.float32),
+                                               mask_np[0].astype(np.float32), 50, 1e-4)])
+                        for image_np, mask_np in zip(self.images, masks_np)]
+
+        def to_bin(x):
+            v = np.zeros_like(x)
+            v[x > 0.5] = 1
+            return v
+
+        self.fixed_masks = [to_bin(m) for m in new_mask_nps]
+
+    def _plot_with_name(self, iteration, step):
         for left_out, right_out, mask_out, image in zip(self.left_net_outputs,
                                                         self.right_net_outputs,
                                                         self.mask_net_outputs, self.images):
-            plot_image_grid("left_right_{}_step_{}".format(iter, step),
+            plot_image_grid("left_right_{}_step_{}".format(iteration, step),
                             [np.clip(torch_to_np(left_out), 0, 1),
                              np.clip(torch_to_np(right_out), 0, 1)])
             mask_out_np = torch_to_np(mask_out)
-            plot_image_grid("learned_mask_{}_step_{}".format(iter, step),
+            plot_image_grid("learned_mask_{}_step_{}".format(iteration, step),
                             [np.clip(mask_out_np, 0, 1), 1 - np.clip(mask_out_np, 0, 1)])
 
-            plot_image_grid("learned_image_{}_step_{}".format(iter, step),
+            plot_image_grid("learned_image_{}_step_{}".format(iteration, step),
                             [np.clip(mask_out_np * torch_to_np(left_out) + (1 - mask_out_np) * torch_to_np(right_out),
                                      0, 1), image])
+
+    def _step_plot_closure(self, step_number):
+        self._plot_with_name("final", step_number)
+
+    def finalize(self):
+        """
+        Finalizes the segmentation process and saves the results.
+        """
+        save_image(self.image_name + "_left", self.best_result.left)
+        save_image(self.image_name + "_learned_mask", self.best_result.learned_mask)
+        save_image(self.image_name + "_right", self.best_result.right)
+        save_image(self.image_name + "_original", self.images[0])
+        save_image(self.image_name + "_mask", self.best_result.mask)
+        learned_image = self.best_result.left * self.best_result.learned_mask + (
+                1 - self.best_result.learned_mask) * self.best_result.right
+        save_image(self.image_name + "_learned_image", learned_image)
+        save_image("fg_hint", self.fg_hint)
+        save_image("bg_hint", self.bg_hint)
 
 
 def main_segmentation(image_path, conf_params={}):
@@ -440,6 +448,8 @@ def main_segmentation(image_path, conf_params={}):
 
 
 if __name__ == "__main__":
+    set_gpu_or_cpu_and_dtype(use_gpu=True, torch_dtype=torch.float32)
+
     conf_params = {
         "show_every": 500,
         "first_step_iter_num": 1000,

@@ -6,7 +6,10 @@ import torch
 
 from double_dip_core.segmentation import Segmentation
 from double_dip_core.utils.image_io import prepare_image, np_to_pil, torch_to_np
-from double_dip_gradio.common.utils import save_image_to_temp
+from double_dip_gradio.common.utils import save_image_to_temp, set_torch_gpu
+
+stop_flag = False
+use_gpu = True
 
 
 def image_segmentation(image, num_first_step, num_second_step, show_every):
@@ -18,23 +21,41 @@ def image_segmentation(image, num_first_step, num_second_step, show_every):
         num_second_step (int)
         show_Every (int)
     """
+    global stop_flag
+    stop_flag = False
+    set_torch_gpu(use_gpu)
+
     conf_params = {
         "first_step_iter_num": num_first_step,
         "second_step_iter_num": num_second_step,
         "show_every": show_every,
     }
+    left = None
+    right = None
+    learned_mask = None
+    learned_image = None
+
     if image is not None:
         # Save image temporally
         image_path = save_image_to_temp(image)
 
-        yield None, None, None, None, gr.update(visible=True)
-        for left, right, learned_mask, learned_image in main_segmentation_gradio(image_path, conf_params=conf_params):
-            yield left, right, learned_mask, learned_image, gr.update(visible=True)
+        yield left, right, learned_mask, learned_image, gr.update(visible=True), gr.update(visible=True), gr.update(
+            visible=False)
+        for left, right, learned_mask, learned_image in main_segmentation_gradio(image_path, conf_params):
+            yield left, right, learned_mask, learned_image, gr.update(visible=True), gr.update(visible=True), gr.update(
+                visible=False)
+        stop_flag = False
+        yield left, right, learned_mask, learned_image, gr.update(visible=True), gr.update(value="Stop",
+                                                                                           visible=False), gr.update(
+            visible=True)
+
     else:
-        return None, None, None, None, gr.update(visible=False)
+        yield left, right, learned_mask, learned_image, gr.update(visible=False), gr.update(value="Stop",
+                                                                                            visible=False), gr.update(
+            visible=True)
 
 
-def main_segmentation_gradio(image_path, conf_params={}):
+def main_segmentation_gradio(image_path, conf_params):
     """
     Main that uses wrapper SegmentationGradio to perform Segmentation with
     progress updates
@@ -54,11 +75,13 @@ class SegmentationGradio:
     def __init__(self, s: Segmentation):
         self.s = s
 
-    def optimize_gradio(self, progress=gr.Progress(track_tqdm=False)):
+    def optimize_gradio(self):
         """Perform image segmentation"""
 
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+        progress = gr.Progress(track_tqdm=False)
+
         # step 1
         optimizer = torch.optim.Adam(self.s.parameters, lr=self.s.learning_rate)
         for j in progress.tqdm(range(self.s.first_step_iter_num), desc="First step"):
@@ -68,7 +91,10 @@ class SegmentationGradio:
             if self.s.plot_during_training and j % self.s.show_every == 0:
                 yield from self._get_current_results()
             optimizer.step()
-        self.s._update_result_closure()
+            if stop_flag:
+                yield from self._get_current_results()
+                break
+        self.s._update_result_closure(1)
         if self.s.plot_during_training:
             yield from self._get_final_results()
         # step 2
@@ -77,12 +103,13 @@ class SegmentationGradio:
             optimizer.zero_grad()
             self.s._step2_optimization_closure(j)
             self.s._finalize_iteration()
-            if self.s.second_step_done:
-                break
             if self.s.plot_during_training and j % self.s.show_every == 0:
                 yield from self._get_current_results()
             optimizer.step()
-        self.s._update_result_closure()
+            if stop_flag:
+                yield from self._get_current_results()
+                break
+        self.s._update_result_closure(2)
         if self.s.plot_during_training:
             yield from self._get_final_results()
 

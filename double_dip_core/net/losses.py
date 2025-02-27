@@ -17,13 +17,16 @@ class StdLoss(nn.Module):
         blur = (1 / 25) * np.ones((5, 5))
         blur = blur.reshape(1, 1, blur.shape[0], blur.shape[1])
         self.mse = nn.MSELoss()
-        self.blur = nn.Parameter(data=torch.tensor(blur, dtype=torch.float32, device='cuda'), requires_grad=False)
+        self.blur = nn.Parameter(
+            data=torch.tensor(blur, dtype=torch.get_default_dtype(), device=torch.get_default_device()),
+            requires_grad=False)
 
         image = np.zeros((5, 5))
         image[2, 2] = 1
         image = image.reshape(1, 1, image.shape[0], image.shape[1])
-        self.image = nn.Parameter(data=torch.tensor(image, dtype=torch.float32, device='cuda'), requires_grad=False)
-
+        self.image = nn.Parameter(
+            data=torch.tensor(image, dtype=torch.get_default_dtype(), device=torch.get_default_device()),
+            requires_grad=False)
         self.gray_scale = GrayscaleLayer()
 
     def forward(self, x):
@@ -39,8 +42,9 @@ class ExclusionLoss(nn.Module):
         """
         super(ExclusionLoss, self).__init__()
         self.level = level
-        self.avg_pool = torch.nn.AvgPool2d(2, stride=2).type(torch.cuda.FloatTensor)
-        self.sigmoid = nn.Sigmoid().type(torch.cuda.FloatTensor)
+        self.avg_pool = torch.nn.AvgPool2d(2, stride=2).to(dtype=torch.get_default_dtype(),
+                                                           device=torch.get_default_device())
+        self.sigmoid = nn.Sigmoid().to(dtype=torch.get_default_dtype(), device=torch.get_default_device())
 
     def get_gradients(self, img1, img2):
         gradx_loss = []
@@ -87,10 +91,10 @@ class ExtendedL1Loss(nn.Module):
 
     def __init__(self):
         super(ExtendedL1Loss, self).__init__()
-        self.l1 = nn.L1Loss().cuda()
+        self.l1 = nn.L1Loss().to(device=torch.get_default_device())
 
     def forward(self, a, b, mask):
-        normalizer = self.l1(mask, torch.zeros(mask.shape).cuda())
+        normalizer = self.l1(mask, torch.zeros(mask.shape).to(device=torch.get_default_device()))
         c = self.l1(mask * a, mask * b) / normalizer
         return c
 
@@ -98,7 +102,7 @@ class ExtendedL1Loss(nn.Module):
 class GrayLoss(nn.Module):
     def __init__(self):
         super(GrayLoss, self).__init__()
-        self.l1 = nn.L1Loss().cuda()
+        self.l1 = nn.L1Loss().to(device=torch.get_default_device())
 
     def forward(self, x):
         y = torch.ones_like(x) / 2.

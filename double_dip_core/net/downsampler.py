@@ -162,9 +162,8 @@ def get_imresize_downsampled(image, downsampling_factor, downsampling_number):
     Dowsample an image multiple times using and interpolation-bases resizing approach
     Args:
         image: np.array
-        downsampling_factor (int):  e.g. 0.5
+        downsampling_factor (float):  e.g. 0.5
     """
-    # TODO: move kernel type to args
     downsampled_images = [image]
     for i in range(1, downsampling_number + 1):
         im = np.clip(imresize(image.transpose(1, 2, 0),

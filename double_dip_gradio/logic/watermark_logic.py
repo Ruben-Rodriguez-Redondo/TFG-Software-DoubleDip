@@ -7,12 +7,12 @@ import torch
 
 from double_dip_core.utils.image_io import prepare_image, np_to_pil, torch_to_np
 from double_dip_core.watermarks_removal import Watermark, ManyImagesWatermarkNoHint
-from double_dip_gradio.common.utils import save_image_to_temp
+from double_dip_gradio.common.utils import save_image_to_temp, set_torch_gpu
 
 original_image = None
+stop_flag = False
+use_gpu = True
 
-
-# Todo maybe add a message indicating correct or incorrect max
 
 def draw_bbox_on_image(image, x1, y1, x2, y2):
     """
@@ -66,23 +66,33 @@ def update_label_with_dimensions(image):
     """
     Establish the slider limits using image shape
     """
+    global original_image
     if image is None:
         return (gr.update(label="Image 1"), gr.update(value=0, maximum=0),
                 gr.update(value=0, maximum=0), gr.update(value=0, maximum=0)
                 , gr.update(value=0, maximum=0))
 
-    height, width = image.shape[:2]
 
-    x1 = width // 4
-    y1 = height // 4
-    x2 = (3 * width) // 4
-    y2 = (3 * height) // 4
+    else:
+        if original_image is None:
+            height, width = image.shape[:2]
 
-    return (gr.update(label=f"Image 1 ({width}x{height})"),
-            gr.update(maximum=width, value=x1),
-            gr.update(maximum=height, value=y1),
-            gr.update(maximum=width, value=x2),
-            gr.update(maximum=height, value=y2))
+            x1 = width // 4
+            y1 = height // 4
+            x2 = (3 * width) // 4
+            y2 = (3 * height) // 4
+
+            return (gr.update(label=f"Image 1 ({width}x{height})"),
+                    gr.update(maximum=width, value=x1),
+                    gr.update(maximum=height, value=y1),
+                    gr.update(maximum=width, value=x2),
+                    gr.update(maximum=height, value=y2))
+
+        return (gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update())
 
 
 def image_watermark_removal_no_hint(image_1, image_2, image_3, num_iter, show_every):
@@ -96,23 +106,43 @@ def image_watermark_removal_no_hint(image_1, image_2, image_3, num_iter, show_ev
         num_iter (int)
         show_every (int)
     """
+    global stop_flag
+    stop_flag = False
+    set_torch_gpu(use_gpu)
+
     conf_params = {
         "num_iter_per_step": num_iter,
         "show_every": show_every,
     }
-    image_1_path = save_image_to_temp(image_1)
-    image_2_path = save_image_to_temp(image_2)
-    image_3_path = save_image_to_temp(image_3)
-    imgs_paths = [image_1_path, image_2_path, image_3_path]
+    clean_imgs = [None, None, None]
+    watermark_img = None
+    mask = None
 
-    # Todo add here check if they are not none and the nones must be the len if images,
-    # not have to be always three, can be two
-    imgs_names = [os.path.splitext(os.path.basename(path))[0] for path in imgs_paths]
+    if image_1 is not None and image_2 is not None:
+        image_1_path = save_image_to_temp(image_1)
+        image_2_path = save_image_to_temp(image_2)
+        imgs_paths = [image_1_path, image_2_path]
+        if image_3:
+            image_3_path = save_image_to_temp(image_3)
+            imgs_paths.append(image_3_path)
 
-    yield None, None, None, None, None, gr.update(visible=True)
-    for clean_imgs, watermark_img, mask in main_remove_watermark_many_images_gradio(imgs_paths, imgs_names,
-                                                                                    conf_params=conf_params):
-        yield clean_imgs[0], clean_imgs[1], clean_imgs[2], watermark_img, mask, gr.update(visible=True)
+        imgs_names = [os.path.splitext(os.path.basename(path))[0] for path in imgs_paths]
+
+        yield clean_imgs[0], clean_imgs[1], clean_imgs[2], watermark_img, mask, gr.update(visible=True), gr.update(
+            visible=True), gr.update(visible=False)
+        for clean_imgs, watermark_img, mask in main_remove_watermark_many_images_gradio(imgs_paths, imgs_names,
+                                                                                        conf_params):
+            if image_3 is None:
+                clean_imgs.append(gr.update(visible=False))
+            yield clean_imgs[0], clean_imgs[1], clean_imgs[2], watermark_img, mask, gr.update(visible=True), gr.update(
+                visible=True), gr.update(visible=False)
+        stop_flag = False
+        yield clean_imgs[0], clean_imgs[1], clean_imgs[2], watermark_img, mask, gr.update(visible=True), gr.update(
+            value="Stop", visible=False), gr.update(visible=True)
+
+    else:
+        yield clean_imgs[0], clean_imgs[1], clean_imgs[2], watermark_img, mask, gr.update(visible=False), gr.update(
+            value="Stop", visible=False), gr.update(visible=True)
 
 
 def image_watermark_removal_hint(x1, y1, x2, y2, num_first_step, num_second_step, show_every):
@@ -125,26 +155,42 @@ def image_watermark_removal_hint(x1, y1, x2, y2, num_first_step, num_second_step
         num_second_step (int)
         show_every (int)
     """
+    global stop_flag
+    stop_flag = False
+    set_torch_gpu(use_gpu)
+
+    global original_image
+
     conf_params = {
         "num_iter_first_step": num_first_step,
         "num_iter_second_step": num_second_step,
         "show_every": show_every,
     }
+    clean_img = None
+    mask = None
+    watermark_img = None
+
     if original_image is not None:
         image_path = save_image_to_temp(original_image)
         img_hint = process_hint(original_image, x1, y1, x2, y2)
         image_hint_path = save_image_to_temp(img_hint)
 
-        yield None, None, None, gr.update(visible=True)
+        yield clean_img, mask, watermark_img, gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
         for clean_img, mask, watermark_img in main_remove_watermark_hint_gradio(image_path, image_hint_path,
-                                                                                conf_params=conf_params):
-            yield clean_img, mask, watermark_img, gr.update(visible=True)
+                                                                                conf_params):
+            yield clean_img, mask, watermark_img, gr.update(visible=True), gr.update(visible=True), gr.update(
+                visible=False)
+        stop_flag = False
+        yield clean_img, mask, watermark_img, gr.update(visible=True), gr.update(value="Stop",
+                                                                                 visible=False), gr.update(visible=True)
 
     else:
-        return None, None, None, gr.update(visible=False)
+        yield clean_img, mask, watermark_img, gr.update(visible=False), gr.update(value="Stop",
+                                                                                  visible=False), gr.update(
+            visible=True)
 
 
-def main_remove_watermark_hint_gradio(img_path, hint_path, conf_params={}):
+def main_remove_watermark_hint_gradio(img_path, hint_path, conf_params):
     """
     Main that uses wrapper WatermarkGradio to perform
     watermark removal using a hint with updates
@@ -157,7 +203,7 @@ def main_remove_watermark_hint_gradio(img_path, hint_path, conf_params={}):
     yield from w_gradio.optimize_gradio()
 
 
-def main_remove_watermark_many_images_gradio(imgs_paths, imgs_names, conf_params={}):
+def main_remove_watermark_many_images_gradio(imgs_paths, imgs_names, conf_params):
     """
      Main that uses wrapper ManyImagesWatermarkNoHintGradio to perform
      watermark removal with updates
@@ -176,10 +222,11 @@ class WatermarkGradio:
     def __init__(self, w: Watermark):
         self.w = w
 
-    def optimize_gradio(self, progress=gr.Progress(track_tqdm=False)):
+    def optimize_gradio(self):
         """Perform image watermark removal"""
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+        progress = gr.Progress(track_tqdm=False)
         # step 1
         optimizer = torch.optim.Adam(self.w.parameters, lr=self.w.learning_rate)
         for j in progress.tqdm(range(self.w.num_iter_first_step), desc="First step"):
@@ -188,15 +235,21 @@ class WatermarkGradio:
             optimizer.step()
             if self.w.plot_during_training and j % self.w.show_every == 0:
                 yield from self._get_current_results(1)
+            if stop_flag:
+                yield from self._get_current_results(1)
+                break
         # step 2
         optimizer = torch.optim.Adam(self.w.parameters, lr=self.w.learning_rate)
         for j in progress.tqdm(range(self.w.num_iter_second_step), desc="Second step"):
             optimizer.zero_grad()
             self.w._step2_optimization_closure(j)
-            self.w._step2_finalize_iteration()
+            self.w._step2_finalize_iteration(j)
             if self.w.plot_during_training and j % self.w.show_every == 0:
                 yield from self._get_current_results(2)
             optimizer.step()
+            if stop_flag:
+                yield from self._get_current_results(2)
+                break
         self.w._update_result_closure()
         yield from self._get_final_results()
 
@@ -227,18 +280,22 @@ class ManyImagesWatermarkNoHintGradio:
     def __init__(self, w: ManyImagesWatermarkNoHint):
         self.w = w
 
-    def optimize_gradio(self, progress=gr.Progress(track_tqdm=False)):
+    def optimize_gradio(self):
         """Perform image watermark removal"""
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+        progress = gr.Progress(track_tqdm=False)
         optimizer = torch.optim.Adam(self.w.parameters, lr=self.w.learning_rate)
         for j in progress.tqdm(range(self.w.num_iter_per_step), desc="Removing watermarks"):
             optimizer.zero_grad()
             self.w._optimization_closure(j)
-            self.w._finalize_iteration()
+            self.w._finalize_iteration(j)
             if self.w.plot_during_training and j % self.w.show_every == 0:
                 yield from self._get_current_results()
             optimizer.step()
+            if stop_flag:
+                yield from self._get_current_results()
+                break
         self.w._update_result_closure()
         yield from self._get_final_results()
 

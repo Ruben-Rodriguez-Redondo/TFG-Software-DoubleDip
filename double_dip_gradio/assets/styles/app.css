@@ -14,9 +14,35 @@
     background-color: #FF0000;
 }
 .gr-column {
-    background-color: #282828 !important;
+    background-color: #393939 !important;
 }
 
 .input-images{
     max-width: fit-content;
+    min-width: 280px !important;
+}
+
+.toggles {
+    max-width: fit-content;
+    border-radius: 10px !important;
+
+}
+
+.row-toggles {
+    align-self: anchor-center;
+}
+
+div.svelte-633qhp {
+    background: none !important;
+    border: none !important;
+}
+
+.centered-header {
+    background-color: #737373;
+    border-radius: 10px;
+    padding: 20px;
+    width: fit-content;
+    margin: 0 auto;
+    text-align: center;
+    color: white;
 }

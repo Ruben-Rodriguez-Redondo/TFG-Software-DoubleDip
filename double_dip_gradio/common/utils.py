@@ -1,7 +1,12 @@
 import tempfile
+
+import cv2
 import gradio as gr
 import numpy as np
+import torch
 from PIL import Image
+
+from double_dip_core.utils.image_io import np_to_pil
 
 
 def change_scene():
@@ -11,22 +16,54 @@ def change_scene():
     return gr.update(visible=False), gr.update(visible=True)
 
 
-def save_image_to_temp(image: np.ndarray) -> str:
+def save_image_to_temp(image):
     """
     Save image temporally and return its path
     Args:
         image (np.array)
     Return:
-        temp_path(str): temporaly location file_path of the image
+        temp_path(str): temporally location file_path of the image
     """
-    # Convertir el ndarray a una imagen de PIL
-    pil_image = Image.fromarray(image)  # Convertir a uint8 para PIL
+    pil_image = Image.fromarray(image)
 
-    # Crear un archivo temporal con un nombre único
     with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
         temp_path = temp_file.name
-        pil_image.save(temp_path)  # Guardar la imagen en el archivo temporal
+        pil_image.save(temp_path)
     return temp_path
+
+
+def save_video_to_temp(video_frames, fps):
+    """
+    Converts a frames secuence into a video and save it into a temp file
+    Args:
+        video_frames(list):, list of frames (np.array).
+        fps(int):videos fps.
+
+    Returns:
+        str: Path for temporal video
+    """
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video:
+            temp_video_path = temp_video.name
+
+        _, height, width = video_frames[0].shape
+
+        # fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        out = cv2.VideoWriter(temp_video_path, 6, fps, (width, height))
+
+        for frame in video_frames:
+            if frame is None:
+                break
+            frame = np.array(np_to_pil(frame))
+            out.write(frame)
+
+        out.release()
+        yield temp_video_path, None, None
+
+    except Exception as e:
+        print(f"Error saving temporal video: {e}")
+        return None
 
 
 def get_image_params():
@@ -43,6 +80,37 @@ def get_image_params():
     return params
 
 
+def get_video_params():
+    params = {
+        "sources": ["upload"],
+        "show_label": True,
+        "show_download_button": False,
+        "show_share_button": False,
+        "include_audio": True,  # Dont change
+        "elem_classes": "input-images"
+
+    }
+
+    return params
+
+
+def stop_process(logic_py):
+    setattr(logic_py, "stop_flag", True)
+    return gr.update(value="Stopping...")
+
+
+def set_use_gpu(logic_py, use_gpu):
+    setattr(logic_py, "use_gpu", use_gpu)
+
+
+def set_torch_gpu(use_gpu):
+    if use_gpu:
+        if torch.cuda.is_available():
+            torch.set_default_device("cuda")
+        else:
+            torch.set_default_device("cpu")
+
+
 def get_button_params():
     return {"elem_classes": "gr-button-custom"}
 
@@ -51,7 +119,6 @@ def get_gallery_params():
     return {"interactive": False, "container": False, "object_fit": "fill"}
 
 
-# Todo remove the extra images once they are used in the results TFG part
 def get_app_images(images_path):
     imgs = {
         "seg": [(f"{images_path}/seg_image.png", "Input"), (f"{images_path}/seg_learned_mask.png", "No Binary Mask"),

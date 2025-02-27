@@ -74,7 +74,7 @@ def get_image_grid(images_np, nrow=8):
 
 def plot_image_grid(name, images_np, interpolation='lanczos', output_path="output/"):
     """
-    Plots and saves a grid of images.
+    Plots and saves a grid of two images.
     Args:
         name: Filename for saving the grid.
         images_np: List of image NumPy arrays (each should be 3xHxW or 1xHxW).
@@ -115,16 +115,33 @@ def save_image(name, image_np, output_path="output/"):
     p.save(output_path + "{}.jpg".format(name))
 
 
-def save_graph(name, graph_list, output_path="output/"):
+def save_graph(name, graph_lists,num_iters, output_path="output/"):
     """
     Saves a line graph from a list of values.
     Args:
         name: str, output graph name.
         graph_list: list, values to plot.
+        num_iters: total of iterations
         output_path: str, directory where the graph will be saved.
     """
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
     plt.clf()
-    plt.plot(graph_list)
+    # Check if input is a single list, wrap it in a list for consistency
+    if isinstance(graph_lists[0], np.floating):
+        graph_lists = [graph_lists]
+
+    for graph_list in graph_lists:
+        # Create a proportional scale for iterations
+        iter_steps = np.linspace(0, num_iters, len(graph_list))
+        plt.plot(iter_steps, graph_list, linestyle='-')
+
+    plt.xlabel("Iterations")
+    plt.ylabel("SSIM")
+    plt.title("SSIM vs Iterations")
+    plt.legend([f"SSIM {i + 1}" for i in range(len(graph_lists))])
+    plt.grid(True)
+
     plt.savefig(output_path + name + ".png")
 
 
@@ -142,28 +159,6 @@ def create_augmentations(np_image):
     aug += [flipped.copy(), np.rot90(flipped, 1, (1, 2)).copy(), np.rot90(flipped, 2, (1, 2)).copy(),
             np.rot90(flipped, 3, (1, 2)).copy()]
     return aug
-
-
-def save_graphs(name, graph_dict, output_path="output/"):
-    """
-    Saves multiple graphs in a single plot.
-
-    Args:
-        name: str, output graph name.
-        graph_dict: dict, mapping of graph labels to value lists.
-        output_path: str, directory where the graph will be saved.
-    """
-    plt.clf()
-    fig, ax = plt.subplots()
-    for k, v in graph_dict.items():
-        ax.plot(v, label=k)
-        # ax.semilogy(v, label=k)
-    ax.set_xlabel('iterations')
-    # ax.set_ylabel(name)
-    ax.set_ylabel('MSE-loss')
-    # ax.set_ylabel('PSNR')
-    plt.legend()
-    plt.savefig(output_path + name + ".png")
 
 
 def load(path):
@@ -215,7 +210,7 @@ def prepare_image(file_name):
     return pil_to_np(img_pil)
 
 
-def save_video(video_name, video_frames, fps=30, output_path="output/"):
+def save_video(video_name, video_frames, fps, output_path="output/"):
     """
     Converts a sequence of images into a video.
     Args:
@@ -249,6 +244,7 @@ def prepare_video(file_name):
         A cropped and normalized video tensor.
     """
     cap = cv2.VideoCapture(file_name)
+    fps = cap.get(cv2.CAP_PROP_FPS)
     frames = []
     while cap.isOpened():
         ret, frame = cap.read()
@@ -259,7 +255,7 @@ def prepare_video(file_name):
     frames = np.array(frames)
     frames = frames.transpose(0, 3, 1, 2)
     frames = frames.astype(np.float32) / 255.0
-    return frames
+    return frames, fps
 
 
 def pil_to_np(img_PIL, with_transpose=True):

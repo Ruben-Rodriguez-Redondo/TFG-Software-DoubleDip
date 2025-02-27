@@ -7,17 +7,21 @@ import torch
 
 from double_dip_core.transparency_separation import TwoImagesSeparation, Separation
 from double_dip_core.utils.image_io import prepare_image, np_to_pil
-from double_dip_gradio.common.utils import save_image_to_temp
+from double_dip_gradio.common.utils import save_image_to_temp, set_torch_gpu
+
+stop_flag = False
+use_gpu = True
 
 
 def show_combined_texture(toggle_view, image_1, image_2):
     """
     Auxiliar function called in the ui, show the combined (image 1 + image 2)/2 if not ambiguous case
     Args:
-        toggle_view (gradio Component)
-        image_1 (numpy)
-        image_2 (numpy)
+        -toggle_view (gradio Component)
+        -image_1 (numpy)
+        -image_2 (numpy)
     """
+
     if image_1 is not None and image_2 is not None and not toggle_view:
         min_height = min(image_1.shape[0], image_2.shape[0])
         min_width = min(image_1.shape[1], image_2.shape[1])
@@ -43,6 +47,10 @@ def image_transparency_separation(toggle_view, image_1, image_2, num_iter, show_
         num_iter (int)
         show_every (int)
     """
+    global stop_flag
+    stop_flag = False
+    set_torch_gpu(use_gpu)
+
     if toggle_view:
         main_trasnparency = main_two_images_separation_gradio  # Ambiguous case
     else:
@@ -55,12 +63,17 @@ def image_transparency_separation(toggle_view, image_1, image_2, num_iter, show_
     if image_1 is not None and image_2 is not None:
         image_1_path = save_image_to_temp(image_1)
         image_2_path = save_image_to_temp(image_2)
-
-        yield None, None, gr.update(visible=True)
+        reflection = None
+        transmission = None
+        yield reflection, transmission, gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
         for reflection, transmission in main_trasnparency(image_1_path, image_2_path, conf_params):
-            yield reflection, transmission, gr.update(visible=True)
+            yield reflection, transmission, gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
+        stop_flag = False
+        yield reflection, transmission, gr.update(visible=True), gr.update(value="Stop", visible=False), gr.update(
+            visible=True)
+
     else:
-        return None, None, gr.update(visible=False)
+        yield None, None, gr.update(visible=False), gr.update(value="Stop", visible=False), gr.update(visible=True)
 
 
 def main_two_images_separation_gradio(path_input1, path_input2, conf_params):
@@ -96,9 +109,10 @@ class TwoImagesSeparationGradio:
     def __init__(self, t: TwoImagesSeparation):
         self.t = t
 
-    def optimize_gradio(self, text, progress=gr.Progress(track_tqdm=False)):
+    def optimize_gradio(self, text):
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+        progress = gr.Progress(track_tqdm=False)
 
         optimizer = torch.optim.Adam(self.t.parameters, lr=self.t.learning_rate)
         for j in progress.tqdm(range(self.t.num_iter), desc=text):
@@ -108,7 +122,9 @@ class TwoImagesSeparationGradio:
             if self.t.plot_during_training and j % self.t.show_every == 0:
                 yield from self._get_current_results()
             optimizer.step()
-
+            if stop_flag:
+                yield from self._get_current_results()
+                break
         yield from self._get_current_results()
 
     def _get_current_results(self):
@@ -119,11 +135,12 @@ class SeparationGradio:
     def __init__(self, s: Separation):
         self.s = s
 
-    def optimize_gradio(self, text, progress=gr.Progress(track_tqdm=False)):
+    def optimize_gradio(self, text):
         """Perform image transparency separation"""
 
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
+        progress = gr.Progress(track_tqdm=False)
 
         optimizer = torch.optim.Adam(self.s.parameters, lr=self.s.learning_rate)
         for j in progress.tqdm(range(self.s.num_iter), desc=text):
@@ -133,6 +150,9 @@ class SeparationGradio:
             if self.s.plot_during_training and j % self.s.show_every == 0:
                 yield from self._get_current_results()
             optimizer.step()
+            if stop_flag:
+                yield from self._get_current_results()
+                break
         yield from self._get_current_results()
 
     def _get_current_results(self):

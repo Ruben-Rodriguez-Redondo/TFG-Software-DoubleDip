@@ -2,15 +2,15 @@ import sys
 from collections import namedtuple
 
 import torch.nn as nn
-from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+from skimage.metrics import structural_similarity
 
-from double_dip_core.net import skip
+from double_dip_core.net import skip, set_gpu_or_cpu_and_dtype
 from double_dip_core.net.losses import ExclusionLoss
 from double_dip_core.net.noise import get_noise
 from double_dip_core.utils.image_io import *
 
 TwoImagesSeparationResult = namedtuple("TwoImagesSeparationResult",
-                                       ["reflection", "transmission", "psnr", "alpha1", "alpha2"])
+                                       ["reflection", "transmission", "ssim", "alpha1", "alpha2"])
 
 
 class TwoImagesSeparation(object):
@@ -21,7 +21,7 @@ class TwoImagesSeparation(object):
         self.image1 = image1
         self.image2 = image2
         self.plot_during_training = plot_during_training
-        self.psnrs = []
+        self.ssims = [[],[]]
         self.show_every = show_every
         self.image1_name = image1_name
         self.image2_name = image2_name
@@ -42,6 +42,8 @@ class TwoImagesSeparation(object):
         self.transmission_out = None
         self.current_result = None
         self.best_result = None
+        self.device =torch.get_default_device()
+        self.dtype =torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -58,8 +60,10 @@ class TwoImagesSeparation(object):
         """
         Prepares the input image for processing
         """
-        self.image1_torch = np_to_torch(self.image1).type(torch.cuda.FloatTensor)
-        self.image2_torch = np_to_torch(self.image2).type(torch.cuda.FloatTensor)
+        self.image1_torch = np_to_torch(self.image1).to(dtype=self.dtype,
+                                                        device=self.device)
+        self.image2_torch = np_to_torch(self.image2).to(dtype=self.dtype,
+                                                        device=self.device)
 
     def _init_nets(self):
         """
@@ -69,7 +73,6 @@ class TwoImagesSeparation(object):
         -alpha_net1: Mask 1
         -alpha_net2: Mask 2
         """
-        data_type = torch.cuda.FloatTensor
         pad = 'reflection'
         reflection_net = skip(
             self.input_depth, 3,
@@ -81,7 +84,7 @@ class TwoImagesSeparation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.reflection_net = reflection_net.type(data_type)
+        self.reflection_net = reflection_net.to(dtype=self.dtype, device=self.device)
 
         transmission_net = skip(
             self.input_depth, 3,
@@ -93,7 +96,7 @@ class TwoImagesSeparation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.transmission_net = transmission_net.type(data_type)
+        self.transmission_net = transmission_net.to(dtype=self.dtype, device=self.device)
         alpha_net1 = skip(
             self.input_depth, 1,
             num_channels_down=[8, 16, 32, 64, 128],
@@ -104,7 +107,7 @@ class TwoImagesSeparation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.alpha1 = alpha_net1.type(data_type)
+        self.alpha1 = alpha_net1.to(dtype=self.dtype, device=self.device)
 
         alpha_net2 = skip(
             self.input_depth, 1,
@@ -116,7 +119,7 @@ class TwoImagesSeparation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.alpha2 = alpha_net2.type(data_type)
+        self.alpha2 = alpha_net2.to(dtype=self.dtype, device=self.device)
 
     def _init_inputs(self):
         """
@@ -124,15 +127,20 @@ class TwoImagesSeparation(object):
         """
         input_type = 'noise'
         # input_type = 'meshgrid'
-        data_type = torch.cuda.FloatTensor
+        dtype = self.dtype
+        device = self.device
         self.reflection_net_input = get_noise(self.input_depth, input_type,
-                                              (self.image1.shape[1], self.image1.shape[2])).type(data_type).detach()
+                                              (self.image1.shape[1], self.image1.shape[2])).to(dtype=dtype,
+                                                                                               device=device).detach()
         self.alpha_net1_input = get_noise(self.input_depth, input_type,
-                                          (self.image1.shape[1], self.image1.shape[2])).type(data_type).detach()
+                                          (self.image1.shape[1], self.image1.shape[2])).to(dtype=dtype,
+                                                                                           device=device).detach()
         self.alpha_net2_input = get_noise(self.input_depth, input_type,
-                                          (self.image1.shape[1], self.image1.shape[2])).type(data_type).detach()
+                                          (self.image1.shape[1], self.image1.shape[2])).to(dtype=dtype,
+                                                                                           device=device).detach()
         self.transmission_net_input = get_noise(self.input_depth, input_type,
-                                                (self.image1.shape[1], self.image1.shape[2])).type(data_type).detach()
+                                                (self.image1.shape[1], self.image1.shape[2])).to(dtype=dtype,
+                                                                                                 device=device).detach()
 
     def _init_parameters(self):
         """
@@ -147,9 +155,8 @@ class TwoImagesSeparation(object):
         """
         Initializes loss functions for optimization.
         """
-        data_type = torch.cuda.FloatTensor
-        self.mse_loss = torch.nn.MSELoss().type(data_type)
-        self.exclusion_loss = ExclusionLoss().type(data_type)
+        self.mse_loss = torch.nn.MSELoss().to(dtype=self.dtype, device=self.device)
+        self.exclusion_loss = ExclusionLoss().to(dtype=self.dtype, device=self.device)
 
     def optimize(self):
         """
@@ -168,11 +175,11 @@ class TwoImagesSeparation(object):
                 self._plot_closure(j)
             optimizer.step()
 
-    def _optimization_closure(self, iter):
+    def _optimization_closure(self, iteration):
         """
         Computes the loss and backpropagates the gradients.
         Args:
-            iter (int): iteration number
+            iteration (int): iteration number
         """
         reg_noise_std = 0
         reflection_net_input = self.reflection_net_input + (self.reflection_net_input.clone().normal_() * reg_noise_std)
@@ -199,11 +206,13 @@ class TwoImagesSeparation(object):
         self.exclusion = self.exclusion_loss(self.reflection_out, self.transmission_out)
         self.total_loss += 0.1 * self.exclusion
 
-        if iter < 1000:
+        if iteration < 1000:
             self.total_loss += 0.5 * self.mse_loss(self.current_alpha1,
-                                                   torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
+                                                   torch.tensor([[[[0.5]]]]).to(dtype=self.dtype,
+                                                                                device=self.device))
             self.total_loss += 0.5 * self.mse_loss(self.current_alpha2,
-                                                   torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
+                                                   torch.tensor([[[[0.5]]]]).to(dtype=self.dtype,
+                                                                                device=self.device))
 
         self.total_loss.backward()
 
@@ -217,39 +226,45 @@ class TwoImagesSeparation(object):
         alpha1 = np.clip(torch_to_np(self.current_alpha1), 0, 1)
         alpha2 = np.clip(torch_to_np(self.current_alpha2), 0, 1)
         v = alpha1 * reflection_out_np + (1 - alpha1) * transmission_out_np
-        psnr1 = compare_psnr(self.image1, v)
-        psnr2 = compare_psnr(self.image2, alpha2 * reflection_out_np + (1 - alpha2) * transmission_out_np)
-        self.psnrs.append(psnr1 + psnr2)
+        ssim1 = structural_similarity(self.image1.astype(v.dtype), v, channel_axis=0,
+                                     data_range=1.0)
+        ssim2 = structural_similarity(self.image2.astype(v.dtype), alpha2 * reflection_out_np + (1 - alpha2) * transmission_out_np, channel_axis=0,
+                                     data_range=1.0)
+        self.ssims[0].append(ssim1)
+        self.ssims[1].append(ssim2)
+
         self.current_result = TwoImagesSeparationResult(reflection=reflection_out_np, transmission=transmission_out_np,
-                                                        psnr=psnr1, alpha1=alpha1, alpha2=alpha2)
-        if self.best_result is None or self.best_result.psnr < self.current_result.psnr:
+                                                        ssim=ssim1+ssim2, alpha1=alpha1, alpha2=alpha2)
+        if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
             self.best_result = self.current_result
 
-    def _plot_closure(self, iter):
+    def _plot_closure(self, iteration):
         """
         Displays training progress by printing loss and saving intermediate images.
         Args:
-            iter (int): iteration number
+            iteration (int): iteration number
         """
 
-        sys.stdout.write(f'\rIteration {iter:5d} '
+        sys.stdout.write(f'\rIteration {iteration} '
                          f'Loss {self.total_loss.item():.5f} '
                          f'Exclusion {self.exclusion.item():.5f} '
-                         f'PSNR_gt: {self.current_result.psnr:.6f}')
+                         f'SSIM (SSIM1 + SSIM2): {self.current_result.ssim:.3f}')
         sys.stdout.flush()
-        if iter % self.show_every == self.show_every - 1:
-            plot_image_grid("reflection_transmission_{}".format(iter),
+        if iteration % self.show_every == self.show_every - 1:
+            plot_image_grid("reflection_transmission_{}".format(iteration),
                             [self.current_result.reflection, self.current_result.transmission])
-            save_image("sum1_{}".format(iter), self.current_result.alpha1 * self.current_result.reflection +
+            save_image("sum1_{}".format(iteration), self.current_result.alpha1 * self.current_result.reflection +
                        (1 - self.current_result.alpha1) * self.current_result.transmission)
-            save_image("sum2_{}".format(iter), self.current_result.alpha2 * self.current_result.reflection +
+            save_image("sum2_{}".format(iteration), self.current_result.alpha2 * self.current_result.reflection +
                        (1 - self.current_result.alpha2) * self.current_result.transmission)
 
     def finalize(self):
         """
         Finalizes the separation process and saves the results.
         """
-        save_graph(self.image1_name + "_psnr", self.psnrs)
+        save_graph(self.image1_name + "_ssim", self.ssims[0],self.num_iter) # Remove this or put it everywhere
+        save_graph(self.image2_name + "_ssim", self.ssims[1],self.num_iter) # Remove this or put it everywhere
+
         save_image(self.image1_name + "_reflection", self.best_result.reflection)
         save_image(self.image1_name + "_transmission", self.best_result.transmission)
         save_image(self.image1_name + "_original", self.image1)
@@ -261,7 +276,7 @@ class Separation(object):
                  original_reflection=None, original_transmission=None):
         self.image = image
         self.plot_during_training = plot_during_training
-        self.psnrs = []
+        self.ssims = []
         self.show_every = show_every
         self.image_name = image_name
         self.num_iter = num_iter
@@ -279,6 +294,8 @@ class Separation(object):
         self.transmission_out = None
         self.current_result = None
         self.best_result = None
+        self.device =torch.get_default_device()
+        self.dtype =torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -296,7 +313,8 @@ class Separation(object):
         Prepares the input image for processing
         """
         self.images = create_augmentations(self.image)
-        self.images_torch = [np_to_torch(image).type(torch.cuda.FloatTensor) for image in self.images]
+        self.images_torch = [np_to_torch(image).to(dtype=self.dtype, device=self.device)
+                             for image in self.images]
 
     def _init_nets(self):
         """
@@ -304,7 +322,6 @@ class Separation(object):
         - reflection_net: Predicts the first layer.
         - transmision_net: Predicts the mask (no binary).
         """
-        data_type = torch.cuda.FloatTensor
         pad = 'reflection'
         reflection_net = skip(
             self.input_depth, self.images[0].shape[0],
@@ -316,7 +333,7 @@ class Separation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.reflection_net = reflection_net.type(data_type)
+        self.reflection_net = reflection_net.to(dtype=self.dtype, device=self.device)
 
         transmission_net = skip(
             self.input_depth, self.images[0].shape[0],
@@ -328,25 +345,26 @@ class Separation(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.transmission_net = transmission_net.type(data_type)
+        self.transmission_net = transmission_net.to(dtype=self.dtype, device=self.device)
 
     def _init_inputs(self):
         """
         Generates input noise maps for the networks.
         """
         input_type = 'noise'
-        data_type = torch.cuda.FloatTensor
+        dtype = self.dtype
+        device = self.device
         origin_noise = torch_to_np(get_noise(self.input_depth,
                                              input_type,
                                              (self.images_torch[0].shape[2],
-                                              self.images_torch[0].shape[3])).type(data_type).detach())
-        self.reflection_net_inputs = [np_to_torch(aug).type(data_type).detach() for aug in
+                                              self.images_torch[0].shape[3])).to(dtype=dtype, device=device).detach())
+        self.reflection_net_inputs = [np_to_torch(aug).to(dtype=dtype, device=device).detach() for aug in
                                       create_augmentations(origin_noise)]
         origin_noise = torch_to_np(get_noise(self.input_depth,
                                              input_type,
                                              (self.images_torch[0].shape[2],
-                                              self.images_torch[0].shape[3])).type(data_type).detach())
-        self.transmission_net_inputs = [np_to_torch(aug).type(data_type).detach() for aug in
+                                              self.images_torch[0].shape[3])).to(dtype=dtype, device=device).detach())
+        self.transmission_net_inputs = [np_to_torch(aug).to(dtype=dtype, device=device).detach() for aug in
                                         create_augmentations(origin_noise)]
 
     def _init_parameters(self):
@@ -360,9 +378,8 @@ class Separation(object):
         """
         Initializes loss functions for optimization.
         """
-        data_type = torch.cuda.FloatTensor
-        self.l1_loss = nn.L1Loss().type(data_type)
-        self.exclusion_loss = ExclusionLoss().type(data_type)
+        self.l1_loss = nn.L1Loss().to(dtype=self.dtype, device=self.device)
+        self.exclusion_loss = ExclusionLoss().to(dtype=self.dtype, device=self.device)
 
     def optimize(self):
         """
@@ -390,20 +407,20 @@ class Separation(object):
         iteration //= 2
         return iteration % 8
 
-    def _optimization_closure(self, iter):
+    def _optimization_closure(self, iteration):
         """
         Computes the loss and backpropagates the gradients.
         Args:
-            iter (int): iteration number
+            iteration (int): iteration number
         """
-        if iter == self.num_iter - 1:
+        if iteration == self.num_iter - 1:
             reg_noise_std = 0
-        elif iter < 1000:
-            reg_noise_std = (1 / 1000.) * (iter // 100)
+        elif iteration < 1000:
+            reg_noise_std = (1 / 1000.) * max((iteration // 100),1000)
         else:
             reg_noise_std = 1 / 1000.
-        aug = self._get_augmentation(iter)
-        if iter == self.num_iter - 1:
+        aug = self._get_augmentation(iteration)
+        if iteration == self.num_iter - 1:
             aug = 0
         reflection_net_input = self.reflection_net_inputs[aug] + (
                 self.reflection_net_inputs[aug].clone().normal_() * reg_noise_std)
@@ -418,40 +435,43 @@ class Separation(object):
         self.total_loss += 0.01 * self.exclusion_loss(self.reflection_out, self.transmission_out)
         self.total_loss.backward()
 
-    def _obtain_current_result(self, iter):
+    def _obtain_current_result(self, iteration):
         """
         Also updates the best result
         Puts in self.current result the current result.
         """
-        if iter == self.num_iter - 1 or iter % 8 == 0:
+        if iteration == 0 or iteration % 2 == 1 or iteration == self.num_iter - 1:
             reflection_out_np = np.clip(torch_to_np(self.reflection_out), 0, 1)
             transmission_out_np = np.clip(torch_to_np(self.transmission_out), 0, 1)
-            psnr = compare_psnr(self.images[0], reflection_out_np + transmission_out_np)
-            self.psnrs.append(psnr)
+            ssim = structural_similarity(self.images[0].astype(reflection_out_np.dtype), reflection_out_np + transmission_out_np, channel_axis=0,
+                                     data_range=1.0)
+            self.ssims.append(ssim)
             self.current_result = SeparationResult(reflection=reflection_out_np, transmission=transmission_out_np,
-                                                   psnr=psnr)
-            if self.best_result is None or self.best_result.psnr < self.current_result.psnr:
+                                                   ssim=ssim)
+            if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
                 self.best_result = self.current_result
 
-    def _plot_closure(self, iter):
+    def _plot_closure(self, iteration):
         """
         Displays training progress by printing loss and saving intermediate images.
         Args:
-            iter (int): iteration number
+            iteration (int): iteration number
         """
 
         sys.stdout.write(
-            f'\rIteration {iter:5d}    Loss {self.total_loss.item():.5f}  PSRN: {self.current_result.psnr:.6f}')
+            f'\rIteration {iteration}    '
+            f'Loss {self.total_loss.item():.5f}  '
+            f'SSIM: {self.current_result.ssim:.3f}')
         sys.stdout.flush()
-        if iter % self.show_every == self.show_every - 1:
-            plot_image_grid("left_right_{}".format(iter),
+        if iteration % self.show_every == self.show_every - 1:
+            plot_image_grid("left_right_{}".format(iteration),
                             [self.current_result.reflection, self.current_result.transmission])
 
     def finalize(self):
         """
         Finalizes the transparency separation process and saves the results.
         """
-        save_graph(self.image_name + "_psnr", self.psnrs)
+        save_graph(self.image_name + "_ssim", self.ssims,self.num_iter)
         save_image(self.image_name + "_reflection", self.best_result.reflection)
         save_image(self.image_name + "_transmission", self.best_result.transmission)
         save_image(self.image_name + "_reflection2", 2 * self.best_result.reflection)
@@ -459,7 +479,7 @@ class Separation(object):
         save_image(self.image_name + "_original", self.images[0])
 
 
-SeparationResult = namedtuple("SeparationResult", ['reflection', 'transmission', 'psnr'])
+SeparationResult = namedtuple("SeparationResult", ['reflection', 'transmission', 'ssim'])
 
 
 def main_two_images_separation(path_input1, path_input2, conf_params):
@@ -488,14 +508,18 @@ def main_separation(path_input1, path_input2, conf_params):
 
 
 if __name__ == "__main__":
+    set_gpu_or_cpu_and_dtype(use_gpu=True, torch_dtype=torch.float32)
+
     # Separation from two images
     conf_params = {
-        "num_iter": 1000
+        "num_iter": 1000,
+        "show_every":500
     }
-    main_two_images_separation('images/input1.jpg', 'images/input2.jpg', conf_params)
+    #main_two_images_separation('images/input1.jpg', 'images/input2.jpg', conf_params)
 
     # Separation of textures
     conf_params = {
-        "num_iter": 1000
+        "num_iter": 4000,
+        "show_every":500
     }
     main_separation('images/texture1.jpg', 'images/texture2.jpg', conf_params)
