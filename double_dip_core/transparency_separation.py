@@ -515,7 +515,7 @@ if __name__ == "__main__":
         "num_iter": 1000,
         "show_every":500
     }
-    #main_two_images_separation('images/input1.jpg', 'images/input2.jpg', conf_params)
+    main_two_images_separation('images/input1.jpg', 'images/input2.jpg', conf_params)
 
     # Separation of textures
     conf_params = {
