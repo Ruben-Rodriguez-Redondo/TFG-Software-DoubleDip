@@ -100,6 +100,10 @@ class ExtendedL1Loss(nn.Module):
 
 
 class GrayLoss(nn.Module):
+    """
+    Segmentation mask regularization loss
+    """
+
     def __init__(self):
         super(GrayLoss, self).__init__()
         self.l1 = nn.L1Loss().to(device=torch.get_default_device())
@@ -107,17 +111,3 @@ class GrayLoss(nn.Module):
     def forward(self, x):
         y = torch.ones_like(x) / 2.
         return 1 / self.l1(x, y)
-
-
-class GradientLoss(nn.Module):
-    """
-    L1 loss on the gradient of the picture
-    """
-
-    def __init__(self):
-        super(GradientLoss, self).__init__()
-
-    def forward(self, a):
-        gradient_a_x = torch.abs(a[:, :, :, :-1] - a[:, :, :, 1:])
-        gradient_a_y = torch.abs(a[:, :, :-1, :] - a[:, :, 1:, :])
-        return torch.mean(gradient_a_x) + torch.mean(gradient_a_y)

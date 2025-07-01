@@ -74,7 +74,7 @@ def get_image_params():
         "show_download_button": False,
         "show_share_button": False,
         "show_fullscreen_button": False,
-        "elem_classes": "input-images"
+        "elem_classes": "input-images_remove"
 
     }
     return params
@@ -87,7 +87,7 @@ def get_video_params():
         "show_download_button": False,
         "show_share_button": False,
         "include_audio": True,  # Dont change
-        "elem_classes": "input-images"
+        "elem_classes": "input-images_remove"
 
     }
 
@@ -109,6 +109,8 @@ def set_torch_gpu(use_gpu):
             torch.set_default_device("cuda")
         else:
             torch.set_default_device("cpu")
+    else:
+        torch.set_default_device("cpu")
 
 
 def get_button_params():
@@ -116,13 +118,17 @@ def get_button_params():
 
 
 def get_gallery_params():
-    return {"interactive": False, "container": False, "object_fit": "fill"}
+    return {"interactive": False,
+            "container": False,
+            "allow_preview": False,
+            "show_fullscreen_button": False,
+            "object_fit": "fill"}
 
 
 def get_app_images(images_path):
     imgs = {
-        "seg": [(f"{images_path}/seg_image.png", "Input"), (f"{images_path}/seg_learned_mask.png", "No Binary Mask"),
-                (f"{images_path}/seg_bg.png", "Layer 1 (left)"), (f"{images_path}/seg_fg.png", "Layer 2 (right)")],
+        "seg": [(f"{images_path}/seg_image.png", "Input"), (f"{images_path}/seg_learned_mask.png", "Binary Mask"),
+                (f"{images_path}/seg_fg.png", "Layer 1 (left)"), (f"{images_path}/seg_bg.png", "Layer 2 (right)")],
         "trans": {"amb": [(f"{images_path}/trans_ambiguous_1.png", "Input 1"),
                           (f"{images_path}/trans_ambiguous_2.png", "Input 2"),
                           (f"{images_path}/trans_ambiguous_reflection.png", "Reflection layer"),
@@ -134,7 +140,7 @@ def get_app_images(images_path):
                      (f"{images_path}/wat_rm_image.png", "Clean input"),
                      (f"{images_path}/wat_mark_hint.png", "Watermark")]
         },
-        "deh": [(f"{images_path}/deh_ori.png", "Haze image"), (f"{images_path}/deh_t_map.png", "A-Map"),
-                (f"{images_path}/deh_a_map.png", "Regularized T-MAP"), (f"{images_path}/deh_fin.png", "Dehaze image")]
+        "deh": [(f"{images_path}/deh_ori.png", "Haze image"), (f"{images_path}/deh_t_map.png", "t-Map"),
+                (f"{images_path}/deh_a_map.png", "A-Map"), (f"{images_path}/deh_fin.png", "Dehaze image")]
     }
     return imgs

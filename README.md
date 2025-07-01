@@ -2,10 +2,10 @@
 
 This project is an extended and refined fork of the official implementation of the paper [*"Double-DIP: Unsupervised
 Image Decomposition via Coupled
-Deep-Image-Priors"*](http://www.wisdom.weizmann.ac.il/~vision/DoubleDIP/resources/DoubleDIP.pdf),  
-originally available [here](https://github.com/yossigandelsman/DoubleDIP/tree/master). Which allow performs tasks as
-image segmentation, watermark removal, transparency separation and dehazing, all of them using **unsupervised techniques
-**.
+Deep-Image-Priors"*](http://www.wisdom.weizmann.ac.il/~vision/DoubleDIP/resources/DoubleDIP.pdf), originally
+available [here](https://github.com/yossigandelsman/DoubleDIP/tree/master). Which allow performs tasks as
+image segmentation, watermark removal, transparency separation and dehazing, all of them using **auto-supervised
+techniques**.
 
 ## 🚀 Enhancements in this version
 
@@ -13,16 +13,26 @@ image segmentation, watermark removal, transparency separation and dehazing, all
 - ✅ **Bug fix and extensive comments** to enhance understanding.
 - ✅ **A user-friendly Gradio interface** for easier interaction.
 - ✅ **GPU, CPU and torch.dtype selection** for more accessibility, personalization and speed.
-- ✅ **SSIM metrics** to evaluate the effectiveness of the tasks.
+- ✅ **SSIM metrics**: Added SSIM for image-based tasks and tSSIM for video-based tasks to evaluate the effectiveness and
+  temporal consistency of the results.
 - ✅ **Additional functionality**:
-    - Including hint creation and main example in **Image segmentation**
+    - Completed the full pipeline for the **Image Segmentation** task, including **hint generation** and integration
+      with the main workflow.
     - **Dehazing** extended to videos (.mp4 format).
 
 ## Table of Contents
 
-- [Installation](#installation) 🛠️
-- [Usage](#usage) 💡
-- [License](#license) 📜
+- [Interface](#-gradio-interface) 📸
+- [Installation](#installation-) 🛠️
+- [Usage](#usage-) 💡
+- [Bugs & Issues](#bugs--issues-) 🐞
+- [License](#license-) 📜
+
+## 📸 Gradio interface
+
+<div align="center">
+  <img  src = "/figs/main_functionalities.png" alt = "Main Functionalities">
+</div>
 
 ## Installation 🛠️
 
@@ -53,7 +63,7 @@ cd TFG-Software-DoubleDip
 Windows as OS**.
 More details [here](https://pytorch.org/). \
 Create a virtual environment, activated (consult the IDE or shell guide). In Pycharm is enough executing in local
-terminal
+terminal:
 
 ```
 python -m venv .venv
@@ -91,7 +101,7 @@ pip install -e .
 
 `Optional`: At least in my Pycharm community version (2024.2.5) even if the packages are correctly installed, and the
 code works fine
-some packages are still red-marked in the code as not installed. To avoid this warning (if happened to you) just add
+some packages are still red-marked in the code as not installed. To avoid this warning (if it happens to you) just add
 .venv\Lib\Site-Packages to
 your interpreter paths. More
 details [here](https://stackoverflow.com/questions/31235376/pycharm-doesnt-recognize-installed-module).
@@ -118,23 +128,27 @@ python double_dip_gradio/app.py
 
 And navigate to http://localhost:7860/, port number can be modified in double_dip_gradio/common/config.json.
 
-# 📸 Gradio interface
+## Bugs & Issues 🐞
 
-<div align="center">
-  <img  src = "/figs/main_functionalities.png" alt = "Main Functionalities">
-</div>
-
-## Bugs & Issues 💡
 - Here's a list of some bugs or issues it may occur:
-  - ```INFO: Could not find files for the given pattern(s)```. This is a message which apparently appear when the Gradio app starts in Windows 11. Nowadays the  [issue](https://github.com/gradio-app/gradio/issues/9974) is still open. But it doesn't affect the program, is just annoying.
-  - ```[WinError 10054] An existing connection was forcibly closed by the remote host"```. This happened mainly when trying to upload a long video in the Gradio app. It doesn't crash the program, but maybe you have to retry until the video is uploaded correctly. There's not only one reason for it to happen but apparently is caused by some incompatibilities between the browser and your binaries [stackoverflow](https://stackoverflow.com/questions/59633068/connectionreseterror-winerror-10054-an-existing-connection-was-forcibly-close)
-  - ```
-    ERROR: Exception in ASGI application
-    ...
-    h11._util.LocalProtocolError: Too little data for declared Content-Length
-    ```
-    This is similar to the previous one but happens with big images instead of videos. It also doesn't crash the  programs, but you have to retry until the image is uploaded correctly. Some of them solved it [changing Gradio version](https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/11855) or upgrading [third party libraries](https://github.com/facebookresearch/audio2photoreal/issues/6)
-
+    - ```INFO: Could not find files for the given pattern(s)```. This is a message which apparently appear when the
+      Gradio app starts in Windows 11. Nowadays the  [issue](https://github.com/gradio-app/gradio/issues/9974) is still
+      open. But it doesn't affect the program, is just annoying. ```Update:```  apparently the bug has been fixed in the
+      new version 5.34.2 released in June 2025.
+    - ```[WinError 10054] An existing connection was forcibly closed by the remote host"```. This happened mainly when
+      trying to upload a long video in the Gradio app. It doesn't crash the program, but maybe you have to retry until
+      the video is uploaded correctly. There's not only one reason for it to happen but apparently is caused by some
+      incompatibilities between the browser and your
+      binaries [stackoverflow](https://stackoverflow.com/questions/59633068/connectionreseterror-winerror-10054-an-existing-connection-was-forcibly-close).
+    - ```
+      ERROR: Exception in ASGI application
+      ...
+      h11._util.LocalProtocolError: Too little data for declared Content-Length
+      ```
+      This is similar to the previous one but happens with big images instead of videos. It also doesn't crash the
+      programs, but you have to retry until the image is uploaded correctly. Some of them solved
+      it [changing Gradio version](https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/11855) or
+      upgrading [third party libraries](https://github.com/facebookresearch/audio2photoreal/issues/6).
 
 ## License 📜
 
@@ -144,5 +158,5 @@ You are free to copy, modify, distribute, and reproduce the material in any medi
 credit, indicate if changes were made, and distribute your contributions under the same license.
 
 <div align="center">
-  <img src="/figs/license.png" alt="License">
+  <img src="/figs/license.png" alt="License" width="80%">
 </div>

@@ -11,21 +11,21 @@ button_params = get_button_params()
 
 
 def get_watermarks_removal_ui(menu_ui):
-    with gr.Column(visible=False,variant="panel", elem_classes="gr-column") as transparency_separation_ui:
+    with gr.Column(visible=False, variant="panel", elem_classes="gr-column") as transparency_separation_ui:
         gr.Markdown("<h1 class='centered-header'>WATERMARK REMOVAL</h1>")
 
-        with gr.Row(elem_classes="row-toggles"):
-            toggle_view = gr.Checkbox(label="No hint (boundind box)", value=False, elem_classes="toggles")
+        with gr.Row(elem_classes="row-toggles"):  # "No hint (boundind box)"
+            toggle_view = gr.Checkbox(label="Multiple images_remove", value=False, elem_classes="toggles")
             toggle_gpu = gr.Checkbox(label="Use GPU", value=True, elem_classes="toggles")
 
         with gr.Row(visible=True) as input_image_hint:
             image = gr.Image(label="Image", placeholder="#Upload one image \n", **image_params)
             image_hint = gr.Image(label="Image hint", interactive=False, visible=False, **image_params)
         with gr.Row(visible=True) as input_bbox_hint:
-            x1 = gr.Slider(label="X coordinate (top left corner)", minimum=0, maximum=0, step=1, value=0)
-            y1 = gr.Slider(label="Y coordinate (top left corner)", minimum=0, maximum=0, step=1, value=0)
-            x2 = gr.Slider(label="X coordinate (lower right corner)", minimum=0, maximum=0, step=1, value=0)
-            y2 = gr.Slider(label="Y coordinate (bottom right corner)", minimum=0, maximum=0, step=1, value=0)
+            x1 = gr.Slider(label="X coordinate (top left corner)", minimum=0, maximum=1, step=1, value=0)
+            y1 = gr.Slider(label="Y coordinate (top left corner)", minimum=0, maximum=1, step=1, value=0)
+            x2 = gr.Slider(label="X coordinate (lower right corner)", minimum=0, maximum=1, step=1, value=0)
+            y2 = gr.Slider(label="Y coordinate (bottom right corner)", minimum=0, maximum=1, step=1, value=0)
 
         image.change(update_label_with_dimensions, inputs=[image], outputs=[image, x1, y1, x2, y2])
 
@@ -35,9 +35,9 @@ def get_watermarks_removal_ui(menu_ui):
         y2.change(fn=draw_bbox_on_image, inputs=[image, x1, y1, x2, y2], outputs=[image, image_hint])
 
         with gr.Row(visible=False) as inputs_no_hint:
-            image_1 = gr.Image(label="Image 1", placeholder="#Upload one image \n", **image_params)
+            image_1 = gr.Image(label="Image 1", placeholder="#Upload   one   image\n", **image_params)
             image_2 = gr.Image(label="Image 2", placeholder="#Upload another image\n", **image_params)
-            image_3 = gr.Image(label="Image 3", placeholder="#Upload another image \n (opcional)", **image_params)
+            image_3 = gr.Image(label="Image 3", placeholder="#Upload another image\n (optional)", **image_params)
 
         num_first_step = gr.Slider(minimum=1, maximum=10000, step=1, value=4000,
                                    label="Number of iterations first step", visible=True)

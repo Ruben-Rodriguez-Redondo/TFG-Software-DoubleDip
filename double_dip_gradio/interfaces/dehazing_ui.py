@@ -11,7 +11,7 @@ video_params = get_video_params()
 
 
 def get_dehazing_ui(menu_ui):
-    with gr.Column(visible=False,variant="panel", elem_classes="gr-column") as dehazing_ui:
+    with gr.Column(visible=False, variant="panel", elem_classes="gr-column") as dehazing_ui:
         gr.Markdown("<h1 class='centered-header'>DEHAZING</h1>")
 
         with gr.Row(elem_classes="row-toggles"):
@@ -40,7 +40,7 @@ def get_dehazing_ui(menu_ui):
             a_map = gr.Image(label="A-map", interactive=False, **image_params)
 
         with gr.Row(visible=False) as output_video_row:
-            dehaze_video = gr.PlayableVideo(label="Dehaze video", autoplay=True, elem_id="input-images")
+            dehaze_video = gr.PlayableVideo(label="Dehaze video", autoplay=True, elem_id="input-images_remove")
 
         stop_btn.click(fn=lambda: stop_process(dehazing_logic), outputs=stop_btn)
 

@@ -111,7 +111,7 @@ def image_watermark_removal_no_hint(image_1, image_2, image_3, num_iter, show_ev
     set_torch_gpu(use_gpu)
 
     conf_params = {
-        "num_iter_per_step": num_iter,
+        "num_iterations": num_iter,
         "show_every": show_every,
     }
     clean_imgs = [None, None, None]
@@ -122,7 +122,7 @@ def image_watermark_removal_no_hint(image_1, image_2, image_3, num_iter, show_ev
         image_1_path = save_image_to_temp(image_1)
         image_2_path = save_image_to_temp(image_2)
         imgs_paths = [image_1_path, image_2_path]
-        if image_3:
+        if image_3 is not None:
             image_3_path = save_image_to_temp(image_3)
             imgs_paths.append(image_3_path)
 
@@ -286,7 +286,7 @@ class ManyImagesWatermarkNoHintGradio:
         torch.backends.cudnn.benchmark = True
         progress = gr.Progress(track_tqdm=False)
         optimizer = torch.optim.Adam(self.w.parameters, lr=self.w.learning_rate)
-        for j in progress.tqdm(range(self.w.num_iter_per_step), desc="Removing watermarks"):
+        for j in progress.tqdm(range(self.w.num_iterations), desc="Removing watermarks"):
             optimizer.zero_grad()
             self.w._optimization_closure(j)
             self.w._finalize_iteration(j)

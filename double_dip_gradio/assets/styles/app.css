@@ -1,20 +1,27 @@
-.grid-wrap.svelte-842rpi.svelte-842rpi {
+:root .dark{
+  --body-background-fill: #1a3d54 !important;
+  --block-background-fill: #1e2940 !important;
+}
+
+.grid-wrap.svelte-1atirkn.fixed-height {
     overflow-y: hidden !important;
     min-height: fit-content;
     max-height: fit-content;
-}
 
+}
 .gr-button-custom {
-    max-width: 160px !important;
     align-self: center;
+    font-size: 20px;
+    max-width: 320px !important;
+    width: fit-content;
 }
 .gr-button-custom-stop {
     max-width: 160px !important;
     align-self: center;
-    background-color: #FF0000;
+    background:#FF0000;
 }
 .gr-column {
-    background-color: #393939 !important;
+    background-color: #daebfd !important;
 }
 
 .input-images{
@@ -30,19 +37,88 @@
 
 .row-toggles {
     align-self: anchor-center;
+    justify-content: center !important;
 }
 
 div.svelte-633qhp {
-    background: none !important;
+    background: #dedede00 !important;
     border: none !important;
 }
+.form.svelte-633qhp {
+    box-shadow: none !important;
+}
 
-.centered-header {
-    background-color: #737373;
+.centered-header {/*44569e #591b1b #013e11*/
+    background-color: #3e0139;
     border-radius: 10px;
-    padding: 20px;
+    padding: 10px;
     width: fit-content;
     margin: 0 auto;
+    margin-bottom: 10px !important;
     text-align: center;
     color: white;
+}
+
+.upload-container.svelte-1hdlew6 {
+    width: 100% !important;
+}
+.svelte-1pijsyv {
+     object-fit: fill !important;
+     max-height: 250px;
+
+}
+.image-frame.svelte-zxsjoa.svelte-zxsjoa {
+    width: 100% !important
+}
+
+.block.input-images_remove.svelte-1svsvh2.auto-margin {
+    max-height: 250px;
+    max-width: fit-content;
+}
+
+
+#input-images_remove {
+    height: 250px;
+    max-width: fit-content;
+}
+.wrap.svelte-euo1cw video {
+     object-fit: fill !important;
+       max-height: 250px;
+
+}
+
+button.svelte-edrmkl {
+    min-width: 220px !important;
+}
+
+.grid-container.svelte-1atirkn {
+    height: 200px;
+}
+
+.form.svelte-633qhp {
+    width: 900px;
+    gap: 8px;
+    align-self: center;
+    flex-wrap: nowrap;
+    min-width: fit-content !important;
+}
+
+.column.gr-column.svelte-vt1mxs.gap.panel {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-right: 100px;
+    padding-left: 100px;
+}
+
+.contain.svelte-czcr5b.svelte-czcr5b {
+    align-items: center;
+}
+
+.contain .grid-container.svelte-1atirkn {
+    max-height: 130px;
+    max-width: 700px;
+}
+
+.gap.svelte-vt1mxs {
+    gap:10px;
 }

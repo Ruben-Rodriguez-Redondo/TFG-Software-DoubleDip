@@ -1,8 +1,10 @@
 import sys
+import time
 from collections import namedtuple
 
 import torch.nn as nn
 from cv2.ximgproc import guidedFilter
+from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity
 
 from double_dip_core.net import *
@@ -50,13 +52,12 @@ def get_atmosphere(image, p=0.0001, w=15):
     return np.max(flatI.take(searchidx, axis=0), axis=0)
 
 
-DehazeResult = namedtuple("DehazeResult", ['learned', 't', 'a', 'ssim'])
+DehazeResult = namedtuple("DehazeResult", ['learned', 't', 'a', 'ssim', 'psnr'])
 
 
 class DehazeImage(object):
     def __init__(self, image_name, image, num_iter=8000, plot_during_training=True,
-                 show_every=500,
-                 gt_ambient=None, clip=True):
+                 show_every=500, gt_ambient=None, use_deep_channel_prior=True, clip=True, ssims=None, psnrs=None):
         """
         Initializes the Dehaze class with the given parameters.
         Args:
@@ -74,8 +75,9 @@ class DehazeImage(object):
         self.num_iter = num_iter
         self.plot_during_training = plot_during_training
         self.show_every = show_every
-        self.ssims = []
-        self.use_deep_channel_prior = False if gt_ambient is not None else True
+        self.ssims = [] if not ssims else ssims
+        self.psnrs = [] if not psnrs else psnrs
+        self.use_deep_channel_prior = use_deep_channel_prior
         self.gt_ambient = gt_ambient
         self.ambient_net = None
         self.image_net = None
@@ -96,8 +98,8 @@ class DehazeImage(object):
         self.total_loss = None
         self.input_depth = 8
         self.post = None
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -124,12 +126,8 @@ class DehazeImage(object):
             new_shape_y -= (new_shape_y % 32)
             image = np_imresize(self.image, output_shape=(new_shape_x, new_shape_y))
             factor += 1
-        # Augmentation to optimize the training (rotations,etc...)
 
-        # Todo check, dind't use augmentations, always take the firts (the original), check watermarks, there use it
-        self.images = create_augmentations(image)
-        self.images_torch = [np_to_torch(image).to(dtype=self.dtype, device=self.device)
-                             for image in self.images]
+        self.images_torch = np_to_torch(self.image).to(dtype=self.dtype, device=self.device)
 
     def _init_nets(self):
         """
@@ -165,29 +163,22 @@ class DehazeImage(object):
         Generates input noise maps for the networks.
         """
 
-        original_noises = create_augmentations(torch_to_np(get_noise(self.input_depth, 'noise',
-                                                                     (self.images[0].shape[1], self.images[0].shape[2]),
-                                                                     var=1 / 10.).to(dtype=self.dtype,
-                                                                                     device=self.device)
-                                                           .detach()))
-        self.image_net_inputs = [
-            np_to_torch(original_noise).to(dtype=self.dtype, device=self.device).detach()
-            for original_noise in original_noises]
+        original_noise = torch_to_np(get_noise(self.input_depth, 'noise',
+                                               (self.image.shape[1], self.image.shape[2]),
+                                               var=1 / 10.).to(dtype=self.dtype,
+                                                               device=self.device)
+                                     .detach())
+        self.image_net_inputs = np_to_torch(original_noise).to(dtype=self.dtype, device=self.device).detach()
 
-        original_noises = create_augmentations(torch_to_np(get_noise(self.input_depth, 'noise',
-                                                                     (self.images[0].shape[1], self.images[0].shape[2]),
-                                                                     var=1 / 10.).to(dtype=self.dtype,
-                                                                                     device=self.device).detach()))
-        self.mask_net_inputs = [
-            np_to_torch(original_noise).to(dtype=self.dtype, device=self.device).detach()
-            for original_noise in original_noises]
+        original_noise = torch_to_np(get_noise(self.input_depth, 'noise',
+                                               (self.image.shape[1], self.image.shape[2]),
+                                               var=1 / 10.).to(dtype=self.dtype,
+                                                               device=self.device).detach())
+        self.mask_net_inputs = np_to_torch(original_noise).to(dtype=self.dtype, device=self.device).detach()
+
         if self._is_learning_ambient():
             self.ambient_net_input = get_noise(self.input_depth, 'meshgrid',
-                                               (self.images[0].shape[1], self.images[0].shape[2])
-                                               ).to(dtype=self.dtype,
-                                                    device=self.device).detach()
-            self.ambient_net_input = get_noise(self.input_depth, 'meshgrid',
-                                               (self.images[0].shape[1], self.images[0].shape[2])
+                                               (self.image.shape[1], self.image.shape[2])
                                                ).to(dtype=self.dtype,
                                                     device=self.device).detach()
 
@@ -272,30 +263,30 @@ class DehazeImage(object):
         Args:
             iteration (int): iteration number
         """
-        aug = 0
         if iteration == self.num_iter - 1:
             reg_std = 0
         else:
             reg_std = 1 / 30.
 
         # Add noise to input image
-        image_net_input = self.image_net_inputs[aug] + (self.image_net_inputs[aug].clone().normal_() * reg_std)
+        image_net_input = self.image_net_inputs + (self.image_net_inputs.clone().normal_() * reg_std)
         self.image_out = self.image_net(image_net_input)
 
         # Compute atmospheric light
         if isinstance(self.ambient_net, nn.Module):
             ambient_net_input = self.ambient_net_input + (self.ambient_net_input.clone().normal_() * reg_std)
+
             self.ambient_out = self.ambient_net(ambient_net_input)
         else:
             self.ambient_out = self.ambient_val
 
         # Compute transmission map
-        self.mask_out = self.mask_net(self.mask_net_inputs[aug])
+        self.mask_out = self.mask_net(self.mask_net_inputs)
 
         # Compute total loss
         self.blur_out = self.blur_loss(self.mask_out)
         self.total_loss = self.mse_loss(self.mask_out * self.image_out + (1 - self.mask_out) * self.ambient_out,
-                                        self.images_torch[aug]) + 0.005 * self.blur_out
+                                        self.images_torch) + 0.005 * self.blur_out
 
         # Regularization for atmospheric light learning
         if self._is_learning_ambient():
@@ -312,16 +303,21 @@ class DehazeImage(object):
         Args:
             iteration (int): iteration number
         """
-        if iteration % 8 == 0 or iteration == self.num_iter - 1:
+        if iteration == 0 or iteration % 2 == 1 or iteration == self.num_iter - 1:
             image_out_np = np.clip(torch_to_np(self.image_out), 0, 1)
             mask_out_np = np.clip(torch_to_np(self.mask_out), 0, 1)
             ambient_out_np = np.clip(torch_to_np(self.ambient_out), 0, 1)
 
+            reconstruc_image = mask_out_np * image_out_np + (1 - mask_out_np) * ambient_out_np
+            ssim = structural_similarity(self.image.astype(image_out_np.dtype),
+                                         reconstruc_image,
+                                         channel_axis=0, data_range=1.0)
+            psnr = compute_psnr(self.image.astype(image_out_np.dtype), reconstruc_image, data_range=1.0)
 
-            ssim =structural_similarity(self.images[0].astype(image_out_np.dtype),
-                                mask_out_np * image_out_np + (1 - mask_out_np) * ambient_out_np,channel_axis=0, data_range=1.0)
+            self.psnrs.append(psnr)
             self.ssims.append(ssim)
-            self.current_result = DehazeResult(learned=image_out_np, t=mask_out_np, a=ambient_out_np, ssim=ssim)
+            self.current_result = DehazeResult(learned=image_out_np, t=mask_out_np, a=ambient_out_np, ssim=ssim,
+                                               psnr=psnr)
 
             # Update best result if ssim improves
             if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
@@ -329,21 +325,27 @@ class DehazeImage(object):
 
     def _plot_closure(self, iteration):
         """
-        Displays training progress by printing loss and saving intermediate images.
+        Displays training progress by printing loss and saving intermediate images_remove.
         Args:
             iteration (int): iteration number
         """
 
-        sys.stdout.write(f'\rIteration {iteration}    '
-                         f'Loss {self.total_loss.item():.6f} '
-                         f' SSIM:{self.current_result.ssim:.3f} '
+        sys.stdout.write(f'\rIteration {iteration + 1}, '
+                         f'Loss: {self.total_loss.item():.5f}, '
+                         f'SSIM:{self.current_result.ssim:.3f}, '
+                         f'PSNR: {self.current_result.psnr:.3f}'
                          )
         sys.stdout.flush()
-        # Save images
+        # Save current
         if iteration % self.show_every == self.show_every - 1:
-            current_result = self.current_result.t * self.current_result.learned + (
-                        1 - self.current_result.t) * self.current_result.a
-            save_image(self.image_name + "_step_{}".format(iteration), current_result)
+            # current_result = self.current_result.t * self.current_result.learned + (
+            #        1 - self.current_result.t) * self.current_result.a
+            # save_image(self.image_name + "reconstruct_step_{}".format(iteration), current_result)
+            save_image(self.image_name + "_step_{}_J".format(iteration), self.current_result.learned)
+            save_image(self.image_name + "_step_{}_t".format(iteration), self.current_result.t)
+
+            if self._is_learning_ambient():
+                save_image(self.image_name + "_step_{}_a".format(iteration), self.current_result.a)
 
     def finalize(self):
         """
@@ -354,18 +356,24 @@ class DehazeImage(object):
         self.final_a = np_imresize(self.best_result.a, output_shape=self.original_image.shape[1:])
 
         # Refine transmission map
-        mask_out_np = self.t_matting(self.final_t_map)
+        mask_out_np = self.t_matting(self.final_t_map)  # Clipped inside
         # Compute final haze-free image
+        # original_image = t*image + (1-t)*A
+        # image = (original_image - (1 - t) * A) * (1/t)
         self.post = np.clip((self.original_image - ((1 - mask_out_np) * self.final_a)) / mask_out_np, 0, 1)
 
-        # Save images in output dir
-        save_graph(self.image_name +"_ssim", self.ssims, self.num_iter)
-        save_image(self.image_name + "_original", np.clip(self.original_image, 0, 1))
-        save_image(self.image_name + "_t", mask_out_np)
-        save_image(self.image_name + "_final", self.post)
-        save_image(self.image_name + "_a", np.clip(self.final_a, 0, 1))
+        # Save images_remove in output dir
+        if len(self.ssims) == (1 + self.num_iter // 2 + (1 if self.num_iter % 2 == 1 else 0)) * 2:
+            save_graph(self.image_name.split('_')[0] + "_ssim", self.ssims, self.num_iter * 2, title="SSIM")
+            save_graph(self.image_name.split('_')[0] + "_psnr", self.psnrs, self.num_iter * 2, title="PSNR")
 
-        plot_image_grid("t_and_amb",
+        save_image(self.image_name + "_original", self.original_image)
+        save_image(self.image_name + "_t_final", mask_out_np)
+        save_image(self.image_name + "_isolate_J", self.post)
+        save_image(self.image_name + "_a_final", np.clip(self.final_a, 0, 1))
+        save_image(self.image_name + "_learned_J", np.clip(self.final_image, 0, 1))
+
+        plot_image_grid(self.image_name + "_a_and_t",
                         [self.best_result.a * np.ones_like(self.best_result.learned), self.best_result.t])
 
     def t_matting(self, mask_out_np):
@@ -382,14 +390,16 @@ class DehazeImage(object):
         else:
             return np.array([np.clip(refine_t, 0, 1)])
 
+
 class DehazeVideo(object):
     def __init__(self, video_name, video_frames, fps, num_iter=3000, plot_during_training=True,
-                 show_every=3000, gt_ambients=None, clip=True, save_frames=False):
+                 show_every=500, gt_ambients=None, use_deep_channel_prior=True, clip=True, save_frames=False,
+                 ssims=None, psnrs=None):
         """
-        Initializes the Dehaze class with the given parameters for multiple images.
+        Initializes the Dehaze class with the given parameters for multiple images_remove.
         Args:
             image_names (list): List of names for the image files.
-            images (list of np.array): List of images affected by haze.
+            images_remove (list of np.array): List of images_remove affected by haze.
             num_iter (int): Number of optimization iterations.
             plot_during_training (bool): Whether to plot intermediate results.
             show_every (int): Frequency of displaying results.
@@ -403,9 +413,10 @@ class DehazeVideo(object):
         self.plot_during_training = plot_during_training
         self.save_frames = save_frames
         self.show_every = show_every
-        self.ssims = []
-        self.use_deep_channel_prior = False if gt_ambients is not None else True
-        self.gt_ambients = [None] * len(self.images)
+        self.ssims = [] if not ssims else ssims
+        self.psnrs = [] if not psnrs else psnrs
+        self.use_deep_channel_prior = use_deep_channel_prior
+        self.gt_ambients = [None] * len(self.images) if gt_ambients is None else gt_ambients
         self.ambient_net = None
         self.image_net = None
         self.mask_net = None
@@ -428,8 +439,8 @@ class DehazeVideo(object):
         self.total_loss = None
         self.input_depth = 8
         self.post = [None] * len(self.images)
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -442,8 +453,7 @@ class DehazeVideo(object):
         self._init_parameters()
         self._init_loss()
 
-
-    def _init_image(self,img_index):
+    def _init_image(self, img_index):
         self.image_torch = np_to_torch(self.images[img_index]).to(dtype=self.dtype, device=self.device)
 
     def _init_nets(self):
@@ -561,7 +571,7 @@ class DehazeVideo(object):
 
     def optimize(self):
         """
-        Performs the optimization process for all images.
+        Performs the optimization process for all images_remove.
         """
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
@@ -578,9 +588,8 @@ class DehazeVideo(object):
                     self._plot_closure(j, img_index)
                 if self.done:
                     break
-                optimizer.step()  # Update parameters after processing all images
+                optimizer.step()  # Update parameters after processing all images_remove
             if not self.limit:
-                save_graph(self.video_name + "_first_frame_ssim",self.ssims,self.num_iter)
                 self.limit = self.best_result.ssim
 
     def _optimization_closure(self, iteration, img_index):
@@ -629,48 +638,58 @@ class DehazeVideo(object):
         Args:
             iteration (int): iteration number
         """
-        if iteration % 8 == 0 or iteration == self.num_iter - 1:
+        if iteration == 0 or iteration % 2 == 1 or iteration == self.num_iter - 1:
             image_out_np = np.clip(torch_to_np(self.image_out), 0, 1)
             mask_out_np = np.clip(torch_to_np(self.mask_out), 0, 1)
             ambient_out_np = np.clip(torch_to_np(self.ambient_out), 0, 1)
 
+            recontruc = mask_out_np * image_out_np + (1 - mask_out_np) * ambient_out_np
             # Compute ssim for image quality evaluation
             ssim = structural_similarity(self.images[img_index].astype(image_out_np.dtype),
-                                mask_out_np * image_out_np + (1 - mask_out_np) * ambient_out_np,channel_axis=0, data_range=1.0)
-            if img_index == 0 :self.ssims.append(ssim)
-            self.current_result = DehazeResult(learned=image_out_np, t=mask_out_np, a=ambient_out_np, ssim=ssim)
+                                         recontruc,
+                                         channel_axis=0, data_range=1.0)
+            psnr = compute_psnr(self.images[img_index].astype(image_out_np.dtype), recontruc, data_range=1.0)
+
+            if img_index == 0:
+                self.ssims.append(ssim)
+                self.psnrs.append(psnr)
+            self.current_result = DehazeResult(learned=image_out_np, t=mask_out_np, a=ambient_out_np, ssim=ssim,
+                                               psnr=psnr)
 
             # Update best result if ssim improves
             if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
                 self.best_result = self.current_result
                 self.best_results[img_index] = self.best_result
-                if self.limit and self.current_result.ssim > self.limit:
+                if self.limit and self.current_result.ssim > min(self.limit, 0.90):
                     self.done = True
 
     def _plot_closure(self, iteration, img_index):
         """
-        Displays training progress by printing loss and saving intermediate images.
+        Displays training progress by printing loss and saving intermediate images_remove.
         Args:
             iteration (int): iteration number
         """
 
-        sys.stdout.write(f'\rFrame {img_index}/{len(self.images)}   '
-                         f'Iteration {iteration}    '
-                         f'Loss {self.total_loss.item():.6f} '
-                         f' SSIM:{self.current_result.ssim:.3f} '
+        sys.stdout.write(f'\rFrame {img_index + 1}/{len(self.images)}, '
+                         f'Iteration {iteration + 1}, '
+                         f'Loss {self.total_loss.item():.5f}, '
+                         f'SSIM:{self.current_result.ssim:.3f}, '
+                         f'PSNR: {self.current_result.psnr:.3f}'
                          )
         sys.stdout.flush()
-        # Save images
-        if iteration % self.show_every == self.show_every - 1:
-            plot_image_grid(self.video_name + "_current_image_{}_{}".format(img_index, iteration),
-                            [self.images[img_index], np.clip(self.best_result.learned, 0, 1)])
+        # Save images_remove
+        if img_index == 0 and iteration % self.show_every == self.show_every - 1:
+            save_image(self.video_name + "_step_{}_J".format(iteration), self.current_result.learned)
+            save_image(self.video_name + "_step_{}_t".format(iteration), self.current_result.t)
+            if self._is_learning_ambient():
+                save_image(self.video_name + "_frame_0_step_{}_a".format(iteration), self.current_result.a)
 
     def finalize(self):
         """
-        Finalizes the dehazing process for all images.
+        Finalizes the dehazing process for all images_remove.
         """
         for i, image in enumerate(self.images):
-            self.image = image
+            # self.image = image
             self.final_image = np_imresize(self.best_results[i].learned, output_shape=self.images[i].shape[1:])
             self.final_t_map = np_imresize(self.best_results[i].t, output_shape=self.images[i].shape[1:])
             self.final_a = np_imresize(self.best_results[i].a, output_shape=self.images[i].shape[1:])
@@ -679,12 +698,19 @@ class DehazeVideo(object):
             mask_out_np = self.t_matting(self.final_t_map, i)
             # Compute final haze-free image
             self.post[i] = np.clip((self.images[i] - ((1 - mask_out_np) * self.final_a)) / mask_out_np, 0, 1)
-            # Save images in output dir
-            if self.save_frames:
+            # Save images_remove in output dir
+            if self.save_frames or i == 0:
                 save_image(f'{self.video_name}_frame_{i}_original', np.clip(self.images[i], 0, 1))
-                save_image(f'{self.video_name}_frame_{i}_t', mask_out_np)
-                save_image(f'{self.video_name}_frame_{i}_final', self.post[i])
-                save_image(f'{self.video_name}_frame_{i}_a', np.clip(self.final_a, 0, 1))
+                save_image(f'{self.video_name}_frame_{i}_t_final', mask_out_np)
+                save_image(f'{self.video_name}_frame_{i}_isolate_J', self.post[i])
+                save_image(f'{self.video_name}_frame_{i}_a_final', np.clip(self.final_a, 0, 1))
+                save_image(f'{self.video_name}_frame_{i}_learned_J', np.clip(self.final_image, 0, 1))
+
+            if i == 0 and len(self.ssims) == (1 + self.num_iter // 2 + (1 if self.num_iter % 2 == 1 else 0)) * 2:
+                save_graph(self.video_name.rsplit('_', 1)[0] + "_frame_0_ssim", self.ssims, self.num_iter * 2,
+                           title="SSIM")
+                save_graph(self.video_name.rsplit('_', 1)[0] + "_frame_0_psnr", self.psnrs, self.num_iter * 2,
+                           title="PSNR")
 
     def t_matting(self, mask_out_np, img_index):
         """
@@ -715,23 +741,25 @@ def main_dehaze_video(video_path, conf_params={}):
     # Obtain the first approximation of the image
     video_name = os.path.splitext(os.path.basename(video_path))[0]
 
-    dh = DehazeVideo(video_name + "_{}".format(0), video_frames, fps, **conf_params)
+    dh = DehazeVideo(video_name + "_0", video_frames, fps, **conf_params)
     dh.optimize()
     dh.finalize()
 
     # Obtain the optimum ambient lightness value
     if dh.use_deep_channel_prior:
         conf_params["gt_ambients"] = []
+        conf_params["use_deep_channel_prior"] = False
         for best_result in dh.best_results:
             conf_params["gt_ambients"].append(best_result.a)
 
     # Upgrade the first obtained image
-    dh = DehazeVideo(video_name + "_{}".format(1), dh.post, fps, **conf_params)
+    dh = DehazeVideo(video_name + "_1", dh.post, fps, ssims=dh.ssims, psnrs=dh.psnrs, **conf_params)
     dh.optimize()
     dh.finalize()
 
     # Save it as a video
-    save_video(video_name, dh.post, fps)
+    dehaze_video_path = save_video(video_name, dh.post, fps)
+    analyze_tssim_videos([video_path, dehaze_video_path])
 
 
 def main_dehaze_image(img_path, conf_params={}):
@@ -755,9 +783,10 @@ def main_dehaze_image(img_path, conf_params={}):
     # Obtain the optimum ambient lightness value
     if dh.use_deep_channel_prior:
         conf_params["gt_ambient"] = dh.best_result.a
+        conf_params["use_deep_channel_prior"] = False
 
     # Upgrade the first obtained image
-    dh = DehazeImage(image_name + "_{}".format(1), dh.post, **conf_params)
+    dh = DehazeImage(image_name + "_1", dh.post, ssims=dh.ssims, psnrs=dh.psnrs, **conf_params)
     dh.optimize()
     dh.finalize()
 
@@ -769,12 +798,17 @@ if __name__ == "__main__":
     set_gpu_or_cpu_and_dtype(use_gpu=True, torch_dtype=torch.float32)
 
     conf_params = {
-        "num_iter": 1000,
-        "show_every":500
+        "num_iter": 8000,
+        "show_every": 500
     }
-    main_dehaze_image("images/hongkong.png", conf_params)
+    start = time.time()
+    main_dehaze_image("images/dehaze/hongkong.png", conf_params)
+    print(f'\nTime: {time.time() - start} seconds')
 
     conf_params = {
-        "num_iter": 1000,
+        "num_iter": 4000,
+        "show_every": 500
     }
-    main_dehaze_video("videos/cut_0.5s_haze_video.mp4", conf_params)
+    start = time.time()
+    main_dehaze_video("videos/foggy_road.mp4", conf_params)
+    print(f'\nTime: {time.time() - start} seconds')

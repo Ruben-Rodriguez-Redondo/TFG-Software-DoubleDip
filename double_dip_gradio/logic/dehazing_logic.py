@@ -102,6 +102,7 @@ def main_dehaze_image_gradio(image_path, conf_params):
     # Obtain the optimum ambient lightness value
     if dh_gradio.dh.use_deep_channel_prior:
         conf_params["gt_ambient"] = dh_gradio.dh.best_result.a
+        conf_params["use_deep_channel_prior"] = False
 
     # Upgrade the first obtained image
     dh = DehazeImage(image_name + "_{}".format(1), dh_gradio.dh.post, **conf_params)
@@ -119,7 +120,7 @@ def main_dehaze_video_gradio(video_path, conf_params):
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     # Obtain the first approximation of the image
     ambient_progress = gr.Progress(track_tqdm=False)
-    for _ in ambient_progress.tqdm(range(1), desc="Obtaining image atmosphere \n (may take a while)"):
+    for _ in ambient_progress.tqdm(range(1), desc=" Obtaining image atmosphere \n (may take a while)"):
         dh = DehazeVideo(video_name + "_{}".format(0), video_frames, fps, **conf_params)
     dh_gradio = DehazeVideoGradio(dh)
     yield from dh_gradio.optimize_gradio("First Aproximation")
@@ -128,6 +129,7 @@ def main_dehaze_video_gradio(video_path, conf_params):
     if not stop_flag:
         if dh_gradio.dh.use_deep_channel_prior:
             conf_params["gt_ambients"] = []
+            conf_params["use_deep_channel_prior"] = False
             for best_result in dh_gradio.dh.best_results:
                 conf_params["gt_ambients"].append(best_result.a)
 
@@ -168,6 +170,7 @@ class DehazeVideoGradio:
                 optimizer.zero_grad()
                 self.dh._optimization_closure(j, img_index)  # Compute loss for each image
                 self.dh._obtain_current_result(j, img_index)  # Evaluate current result for each image
+
                 if self.dh.plot_during_training and j % self.dh.show_every == 0:
                     yield from self._get_current_results(img_index)
                 if self.dh.done:

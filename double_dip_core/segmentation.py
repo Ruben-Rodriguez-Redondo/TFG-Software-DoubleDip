@@ -1,64 +1,187 @@
 import sys
+import time
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from cv2.ximgproc import guidedFilter
+from scipy.spatial.distance import cdist
+from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity
+from tqdm import tqdm
 
 from double_dip_core.net import *
 from double_dip_core.net.downsampler import *
-from double_dip_core.net.losses import GradientLoss, ExtendedL1Loss, GrayLoss
+from double_dip_core.net.losses import ExtendedL1Loss, GrayLoss
 from double_dip_core.net.noise import get_noise
 from double_dip_core.utils.image_io import *
 
 
-def otsu_intraclass_variance(image, threshold):
+def equation_3(img, r, c, rows, cols, K=64, C=3):
     """
-    Compute otsu intra class variance given a threshold
+    Computes Equation (3) from the paper: Context Aware Saliency Detection
+    Saliency at a pixel is defined based on the average color+spatial distance
+    to the K most similar pixels in the image.
+
     Args:
-        image (numpy.ndarray): Grayscale image
-        threshold (int): Segmentation threshold
+        img (ndarray): Input image in range [0, 1], shape (rows, cols, 3).
+        r (int): Row index of the target pixel.
+        c (int): Column index of the target pixel.
+        rows (int): Total number of image rows.
+        cols (int): Total number of image columns.
+        K (int): Number of closest pixels to consider (default: 64).
+        C (float): Weight for spatial distance (default: 3).
 
     Returns:
-        float: Intra-class variance
+        float: Saliency score in [0, 1] for the pixel at position (r, c).
     """
-    foreground = image >= threshold
-    background = image < threshold
 
-    w_fg = np.sum(foreground) / image.size
-    w_bg = np.sum(background) / image.size
+    c0 = img[r, c]  # Color vector of the reference pixel
 
-    var_fg = np.var(image[foreground]) if w_fg > 0 else 0
-    var_bg = np.var(image[background]) if w_bg > 0 else 0
+    # Normalized relative spatial positions
+    row_coords, col_coords = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
+    d_rows = (r - row_coords) / rows
+    d_cols = (c - col_coords) / cols
+    spatial_dists = np.sqrt(d_rows ** 2 + d_cols ** 2)  # Euclidean spatial distance
 
-    return w_fg * var_fg + w_bg * var_bg
+    # Color distance from the reference pixel to every other pixel
+    color_diffs = np.linalg.norm(img - c0, axis=2)  # Euclidean color distance
+
+    # Final combined distance as defined in Equation (1)
+    total_dists = color_diffs / (1 + C * spatial_dists)
+
+    # Flatten and select the K smallest distances
+    flat = total_dists.flatten()
+    flat.sort()
+    topk = flat[:min(K, flat.shape[0])]
+
+    # Final saliency value based on Equation (3)
+    return 1 - np.exp(-np.mean(topk))
 
 
-def obtain_bg_fg_segmentation_hints(image):
-    s = image.copy()
-    s = np.transpose(s, (1, 2, 0))
+def add_blur_and_call_eq3(src, u, rows, cols):
+    """
+    Applies optional blurring to the input image and computes the saliency map
+    by evaluating Equation (3) at every pixel position.
 
-    # Convert image from [0, 1] to [0, 255]
-    s = (s * 255).astype(np.uint8)
-    s = cv2.cvtColor(s, cv2.COLOR_RGB2GRAY)
+    Equation (3) defines pixel saliency as the average color+spatial dissimilarity
+    to the K nearest patches, and is computed using `equation_3`.
 
-    otsu_threshold = min(
-        range(int(np.min(s)), (int(np.max(s)) + 1)),
-        key=lambda th: otsu_intraclass_variance(s, th),
-    )
+    Args:
+        src (ndarray): Input image in range [0, 1], shape (rows, cols, 3).
+        u (int): Blur radius (0 = no blur). Applied using uniform averaging.
+        rows (int): Number of rows in the image.
+        cols (int): Number of columns in the image.
 
-    fg = s.copy()
-    fg[s > otsu_threshold] = 255
-    fg[s <= otsu_threshold] = 0
+    Returns:
+        ndarray: Normalized saliency map in range [0, 1], shape (rows, cols).
+    """
+    # Apply blur with window size (2u + 1)
+    if u > 0:
+        blurred = cv2.blur(src, (2 * u + 1, 2 * u + 1))
+    else:
+        blurred = src.copy()
 
-    bg = s.copy()
-    bg[s > otsu_threshold] = 0
-    bg[s <= otsu_threshold] = 255
+    # Compute saliency for each row in parallel
+    def compute_row(row):
+        return [equation_3(blurred, row, col, rows, cols) for col in range(cols)]
 
-    return fg, bg
+    results = [None] * rows
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(compute_row, r): r for r in range(rows)}
+        for future in tqdm(as_completed(futures), file=sys.stdout, total=rows, desc=f"Saliency map u={u}"):
+            r = futures[future]
+            results[r] = future.result()
+
+    # Stack results and normalize to [0, 1]
+    saliency = np.array(results, dtype=np.float32)
+    saliency /= saliency.max()
+    return saliency
+
+
+def saliency_hints(img, u=4):
+    """
+    Computes saliency-based segmentation hints using the formulation of Equations (4) and (5)
+    from the Context-Aware Saliency Detection approach.
+
+    The process includes:
+    - Conversion to Lab color space and downscaling
+    - Saliency computation at multiple blur levels (Equation 4)
+    - Refinement by proximity to highly salient regions (Equation 5)
+
+    Args:
+        img (ndarray): Input image in shape (C, H, W), with values in [0, 255].
+        u (int): Blur radius to define the size of the local averaging window.
+
+    Returns:
+        ndarray: Refined saliency map in shape (H, W), dtype uint8 in [0, 255].
+    """
+    # Reorder to (H, W, C) and resize image for efficiency
+    src = np.transpose(img, (1, 2, 0))  # Convert to (H, W, C)
+    h, w = src.shape[:2]
+    scale = min(200 / max(h, w), 1.0)  # 200
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    ori_shape = (w, h)
+    src = cv2.resize(src, (new_w, new_h))
+
+    # Convert to Lab color space in range [0, 1]
+    lab = cv2.cvtColor(src, cv2.COLOR_BGR2Lab).astype(np.float32) / 255.0
+    rows, cols = lab.shape[:2]
+
+    # Compute saliency maps at multiple blur scales (Equation 4)
+    tg0 = add_blur_and_call_eq3(lab, 0, rows, cols)
+    tg2 = add_blur_and_call_eq3(lab, u // 2, rows, cols)
+    tg4 = add_blur_and_call_eq3(lab, u, rows, cols)
+    tg_avg = (tg0 + tg2 + tg4) / 3.0
+
+    # Identify high-saliency pixels (top 10%)
+    threshold = np.percentile(tg_avg, 90)
+    main_part = np.argwhere(tg_avg > threshold)
+    S = tg_avg.copy()
+
+    if len(main_part) > 0:
+        # Compute spatial coordinates of all pixels
+        row_coords, col_coords = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
+        all_coords = np.stack((row_coords.ravel(), col_coords.ravel()), axis=-1)  # (rows*cols, 2)
+
+        # Normalize coordinates
+        all_coords_norm = all_coords / np.array([rows, cols])
+        main_part_norm = main_part / np.array([rows, cols])
+
+        # Compute distance to nearest salient region (Equation 5)
+        dists = cdist(all_coords_norm, main_part_norm)  # (rows*cols, N)
+        min_dists = np.min(dists, axis=1)
+
+        # Attenuate saliency for low-saliency areas based on distance
+        S_flat = S.ravel()
+        mask = S_flat <= threshold
+        S_flat[mask] *= (1.0 - min_dists[mask])
+        S = S_flat.reshape((rows, cols))
+
+    # Resize back to original shape and convert to uint8
+    return cv2.resize((S * 255).astype(np.uint8), ori_shape)
+
+
+def obtain_bg_fg_segmentation_hints(img):
+    sal = saliency_hints(img)
+
+    # Foreground mhint
+    image_eq = cv2.equalizeHist(sal)
+    fg = np.zeros_like(image_eq)
+    fg[image_eq > (255 - 15.5)] = 255
+
+    # 2. Background hint
+    image_eq2 = cv2.equalizeHist(sal)
+    bg = np.zeros_like(image_eq2)
+    bg[image_eq2 <= 15.5] = 255
+
+    eq_sal = pil_to_np(cv2.equalizeHist(sal))
+
+    return fg, bg, eq_sal
 
 
 SegmentationResult = namedtuple("SegmentationResult",
-                                ['mask', 'learned_mask', 'left', 'right', 'ssim'])
+                                ['mask', 'learned_mask', 'left', 'right', 'ssim', 'psnr'])
 
 
 class Segmentation(object):
@@ -73,15 +196,17 @@ class Segmentation(object):
         self.bg_hint = bg_hint
 
         if bg_hint is None or fg_hint is None:
-            fg, bg = obtain_bg_fg_segmentation_hints(self.image)
+            fg, bg, eq_sal = obtain_bg_fg_segmentation_hints(self.image.copy())
             self.fg_hint = pil_to_np(fg)
             self.bg_hint = pil_to_np(bg)
+            self.eq_sal = eq_sal
 
         self.image_name = image_name
         self.plot_during_training = plot_during_training
         self.downsampling_factor = downsampling_factor
         self.downsampling_number = downsampling_number
         self.ssims = []
+        self.psnrs = []
         self.mask_net = None
         self.show_every = show_every
         self.left_net = None
@@ -106,8 +231,8 @@ class Segmentation(object):
         self.current_result = None
         self.best_result = None
         self.learning_rate = 0.001
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -150,12 +275,11 @@ class Segmentation(object):
         device = self.device
         self.l1_loss = nn.L1Loss().to(dtype=dtype, device=device)
         self.extended_l1_loss = ExtendedL1Loss().to(dtype=dtype, device=device)
-        self.gradient_loss = GradientLoss().to(dtype=dtype, device=device)
         self.gray_loss = GrayLoss().to(dtype=dtype, device=device)
 
     def _init_nets(self):
         """
-        Initializes the neural networks for dehazing:
+        Initializes the neural networks for segmentation:
         - left_net: Predicts the first layer.
         - mask_net: Predicts the mask (no binary).
         -right_net: Predict the second layer
@@ -185,7 +309,7 @@ class Segmentation(object):
 
         self.right_net = right_net.to(dtype=self.dtype, device=self.device)
 
-        mask_net = skip_mask(
+        mask_net = skip(
             self.input_depth, 1,
             num_channels_down=[8, 16, 32],
             num_channels_up=[8, 16, 32],
@@ -260,16 +384,11 @@ class Segmentation(object):
             self._step_plot_closure(2)
 
     def _step1_optimization_closure(self, iteration):
-        """
-        The real iteration is (step-1) * self.num_iter_per_step + iteration
-        """
         self._initialize_any_step(iteration)
         self._step1_optimize_with_hints()
 
     def _step2_optimization_closure(self, iteration):
-        """
-        The real iteration is (step-1) * self.num_iter_per_step + iteration
-        """
+
         self._initialize_any_step(iteration)
         self._step2_optimize_with_hints(iteration)
 
@@ -277,13 +396,14 @@ class Segmentation(object):
         """
         Computes the loss and backpropagates the gradients.
         """
+        # Reconstruction loss
         self.total_loss += sum(self.extended_l1_loss(left_net_output, image_torch, fg_hint) for
                                left_net_output, fg_hint, image_torch
                                in zip(self.left_net_outputs, self.fg_hints_torch, self.images_torch))
         self.total_loss += sum(self.extended_l1_loss(right_net_output, image_torch, bg_hint) for
                                right_net_output, bg_hint, image_torch
                                in zip(self.right_net_outputs, self.bg_hints_torch, self.images_torch))
-
+        # Mask regularization loss
         self.total_loss += sum(self.l1_loss(((fg_hint - bg_hint) + 1) / 2, mask_net_output) for
                                fg_hint, bg_hint, mask_net_output in
                                zip(self.fg_hints_torch, self.bg_hints_torch, self.mask_net_outputs))
@@ -294,6 +414,7 @@ class Segmentation(object):
         Computes the loss and backpropagates the gradients.
         """
         if iteration <= 1000:
+            # Reconstruction Loss
             self.total_loss += sum(self.extended_l1_loss(left_net_output, image_torch, fg_hint) for
                                    left_net_output, fg_hint, image_torch
                                    in zip(self.left_net_outputs, self.fg_hints_torch, self.images_torch))
@@ -305,11 +426,12 @@ class Segmentation(object):
                                                                        self.right_net_outputs,
                                                                        self.mask_net_outputs,
                                                                        self.images_torch):
+            # Reconstruiction loss
             self.total_loss += 0.5 * self.l1_loss(mask_out * left_out + (1 - mask_out) * right_out,
                                                   original_image_torch)
+            # Regularization loss (no exclussion loss)
             self.current_gradient = self.gray_loss(mask_out)
-            iteration = min(iteration, 1000)
-            self.total_loss += (0.001 * (iteration // 100)) * self.current_gradient
+            self.total_loss += (0.001 * (min(iteration, 1000) // 100)) * self.current_gradient
         self.total_loss.backward(retain_graph=True)
 
     def _initialize_any_step(self, iteration):
@@ -342,51 +464,46 @@ class Segmentation(object):
         right_out_np = torch_to_np(self.right_net_outputs[0])
         original_image = self.images[0]
         mask_out_np = torch_to_np(self.mask_net_outputs[0])
-        self.current_ssim = structural_similarity(original_image.astype(mask_out_np.dtype),
-                                     mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np, channel_axis=0,
-                                     data_range=1.0)
 
+        reconstruc = mask_out_np * left_out_np + (1 - mask_out_np) * right_out_np
+        self.current_ssim = structural_similarity(original_image.astype(mask_out_np.dtype),
+                                                  reconstruc,
+                                                  channel_axis=0,
+                                                  data_range=1.0)
+        self.current_psnr = compute_psnr(original_image.astype(mask_out_np.dtype),
+                                         reconstruc, data_range=1.0)
         self.ssims.append(self.current_ssim)
+        self.psnrs.append(self.current_psnr)
 
     def _iteration_plot_closure(self, iter_number, step_number):
         """
-        Displays training progress by printing loss and saving intermediate images.
+        Displays training progress by printing loss and saving intermediate images_remove.
         Args:
             iter_number (int): iteration number
             step_number (int): step number
         """
 
-        if self.current_gradient is not None:
-            sys.stdout.write(f'\r Step {step_number} Iteration {iter_number:5d} '
-                             f'total_loss {self.total_loss.item():.5f} '
-                             f'grad {self.current_gradient.item():.5f} '
-                             f'SSIM {self.current_ssim:.5f}')
-        else:
-            sys.stdout.write(f'\rStep {step_number} Iteration {iter_number:5d} '
-                             f'total_loss {self.total_loss.item():.5f} '
-                             f'SSIM {self.current_ssim:.5f}')
+        sys.stdout.write(f'\rStep {step_number}, '
+                         f'Iteration {iter_number + 1}, '
+                         f'Loss: {self.total_loss.item():.5f}, '
+                         f'SSIM: {self.current_ssim:.3f}, '
+                         f'PSNR: {self.current_psnr:.3f}')
         sys.stdout.flush()
 
         if iter_number % self.show_every == self.show_every - 1:
             self._plot_with_name(iter_number, step_number)
 
-    def _update_result_closure(self,step):
+    def _update_result_closure(self, step):
         self._finalize_iteration()
         self._fix_mask()
         self.current_result = SegmentationResult(mask=self.fixed_masks[0],
                                                  left=torch_to_np(self.left_net_outputs[0]),
                                                  right=torch_to_np(self.right_net_outputs[0]),
                                                  learned_mask=torch_to_np(self.mask_net_outputs[0]),
-                                                 ssim=self.current_ssim)
+                                                 ssim=self.current_ssim,
+                                                 psnr=self.current_psnr)
         if self.best_result is None or self.best_result.ssim <= self.current_result.ssim:
             self.best_result = self.current_result
-        if step == 1:
-            num_iters = self.first_step_iter_num
-        else:
-            num_iters = self.second_step_iter_num
-
-        save_graph(self.image_name + "_step_{}_ssim".format(step), self.ssims, num_iters)
-        self.ssims = []
 
     def _fix_mask(self):
         """
@@ -395,7 +512,7 @@ class Segmentation(object):
         """
         masks_np = [torch_to_np(mask) for mask in self.mask_net_outputs]
         new_mask_nps = [np.array([guidedFilter(image_np.transpose(1, 2, 0).astype(np.float32),
-                                               mask_np[0].astype(np.float32), 50, 1e-4)])
+                                               mask_np[0].astype(np.float32), 5, 1e-4)])
                         for image_np, mask_np in zip(self.images, masks_np)]
 
         def to_bin(x):
@@ -427,6 +544,7 @@ class Segmentation(object):
         """
         Finalizes the segmentation process and saves the results.
         """
+
         save_image(self.image_name + "_left", self.best_result.left)
         save_image(self.image_name + "_learned_mask", self.best_result.learned_mask)
         save_image(self.image_name + "_right", self.best_result.right)
@@ -437,6 +555,12 @@ class Segmentation(object):
         save_image(self.image_name + "_learned_image", learned_image)
         save_image("fg_hint", self.fg_hint)
         save_image("bg_hint", self.bg_hint)
+        save_image("equalize_saliency", self.eq_sal)
+
+        save_graph(self.image_name + "_ssim", self.ssims, self.first_step_iter_num + self.second_step_iter_num,
+                   title="SSIM")
+        save_graph(self.image_name + "_psnr", self.psnrs, self.first_step_iter_num + self.second_step_iter_num,
+                   title="PSNR")
 
 
 def main_segmentation(image_path, conf_params={}):
@@ -452,8 +576,9 @@ if __name__ == "__main__":
 
     conf_params = {
         "show_every": 500,
-        "first_step_iter_num": 1000,
-        "second_step_iter_num": 1000,
+        "first_step_iter_num": 2000,
+        "second_step_iter_num": 4000,
     }
-
-    main_segmentation('images/mountain.jpg', conf_params=conf_params)
+    start = time.time()
+    main_segmentation('images/segmentation/segmentation_2.png', conf_params=conf_params)
+    print(f'\nTime: {time.time() - start} seconds')

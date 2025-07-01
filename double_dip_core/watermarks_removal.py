@@ -1,7 +1,9 @@
 import sys
+import time
 from collections import namedtuple
 
 import torch.nn as nn
+from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity
 
 from double_dip_core.net import *
@@ -23,6 +25,7 @@ class Watermark(object):
         self.watermark_hint_torchs = None
         self.watermark_hint = watermark_hint
         self.ssims = []
+        self.psnrs = []
         self.clean_net = None
         self.watermark_net = None
         self.image_torchs = None
@@ -38,10 +41,11 @@ class Watermark(object):
         self.current_gradient = None
         self.current_result = None
         self.current_ssim = 0
+        self.current_psnr = 0
         self.best_result = None
         self.learning_rate = 0.001
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -210,7 +214,7 @@ class Watermark(object):
         if iteration == self.num_iter_second_step - 1:
             reg_noise_std = 0
         else:
-            reg_noise_std = (1 / 1000.) * (iteration // 700)
+            reg_noise_std = (1 / 1000.) * min(iteration // (self.num_iter_second_step // 10), 10)
 
         aug = self._get_augmentation(iteration)
         if iteration == self.num_iter_second_step - 1:
@@ -246,23 +250,28 @@ class Watermark(object):
         iteration //= 2
         return iteration % 8
 
-    def _step2_finalize_iteration(self,iteration):
+    def _step2_finalize_iteration(self, iteration):
         if iteration % 4 != 0 or iteration == self.num_iter_second_step - 1:
             clean_out_np = torch_to_np(self.clean_net_output)
             watermark_out_np = torch_to_np(self.watermark_net_output)
             mask_out_np = torch_to_np(self.mask_net_output)
 
-            self.current_ssim = structural_similarity(self.image.astype(mask_out_np.dtype), mask_out_np * self.watermark_hint * watermark_out_np +
-                                             (1 - mask_out_np) * clean_out_np, channel_axis=0,
-                                         data_range=1.0)
+            reconstruc = mask_out_np * self.watermark_hint * watermark_out_np + (1 - mask_out_np) * clean_out_np
+
+            self.current_ssim = structural_similarity(self.image.astype(mask_out_np.dtype),
+                                                      reconstruc, channel_axis=0, data_range=1.0)
+
+            self.current_psnr = compute_psnr(self.image.astype(mask_out_np.dtype), reconstruc, data_range=1.0)
+
             self.ssims.append(self.current_ssim)
+            self.psnrs.append(self.current_psnr)
+
     def _iteration_plot_closure(self, iteration, step):
         """
         Compute the curren_ssim and print the actual step
         """
 
         if iteration % self.show_every == self.show_every - 1:
-            # Tod check if add np.clip
             save_image(self.image_name + "_step_{}_clean_{}".format(step, iteration),
                        torch_to_np(self.clean_net_output))
 
@@ -272,12 +281,9 @@ class Watermark(object):
                 save_image(self.image_name + "_step_{}_mask_{}".format(step, iteration),
                            torch_to_np(self.mask_net_output))
 
-        if self.current_gradient is not None:
-            sys.stdout.write(f'\r Step {step} Iteration {iteration} total_loss {self.total_loss.item():.5f} '
-                             f'grad {self.current_gradient.item():.5f} SSIM {self.current_ssim:.3f} ')
-        else:
-            sys.stdout.write(f'\r Step {step} Iteration {iteration:5d} total_loss {self.total_loss.item():.5f} '
-                             f'SSIM {self.current_ssim:.3f} ')
+        sys.stdout.write(f'\r Step {step}, Iteration {iteration + 1}, Loss: {self.total_loss.item():.5f}, '
+                         f'SSIM: {self.current_ssim:.3f}, '
+                         f'PSNR: {self.current_psnr:.3f}')
 
         sys.stdout.flush()
 
@@ -314,7 +320,9 @@ class Watermark(object):
         """
         Saves the final results.
         """
-        save_graph(self.image_name + "_ssim",self.ssims,self.num_iter_second_step)
+        save_graph(self.image_name + "_ssim", self.ssims, self.num_iter_second_step, title="SSIM (Step 2)")
+        save_graph(self.image_name + "_psnr", self.psnrs, self.num_iter_second_step, title="PSNR (Step 2)")
+
         save_image(self.image_name + "_watermark_finalize", self.best_result.watermark)
         save_image(self.image_name + "_clean_finalize", self.best_result.clean)
         save_image(self.image_name + "_mask_finalize", self.best_result.mask)
@@ -332,19 +340,20 @@ class Watermark(object):
         save_image(self.image_name + "_post_process_watermark", recovered_watermark)
 
 
-
-ManyImageWatermarkResult = namedtuple("ManyImageWatermarkResult", ['cleans', 'mask', 'watermark', 'ssim'])
+ManyImageWatermarkResult = namedtuple("ManyImageWatermarkResult", ['cleans', 'mask', 'watermark', 'ssim', 'psnr'])
 
 
 class ManyImagesWatermarkNoHint(object):
-    def __init__(self, images_names, images, plot_during_training=True, show_every=500, num_iter_per_step=4000
+    def __init__(self, images_names, images, plot_during_training=True, show_every=500, num_iterations=4000
                  ):
         self.images = images
         self.images_names = images_names
         self.plot_during_training = plot_during_training
         self.show_every = show_every
-        self.num_iter_per_step = num_iter_per_step
+        self.num_iterations = num_iterations
         self.ssims = [[] for _ in range(len(self.images))]
+        self.psnrs = [[] for _ in range(len(self.images))]
+
         self.clean_nets = []
         self.watermark_net = None
         self.images_torch = None
@@ -357,13 +366,13 @@ class ManyImagesWatermarkNoHint(object):
         self.parameters = None
         self.input_depth = 2
         self.total_loss = None
-        self.current_ssim = 0
+
         self.current_gradient = None
         self.current_result = None
         self.best_result = None
         self.learning_rate = 0.001
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -380,7 +389,7 @@ class ManyImagesWatermarkNoHint(object):
         """
         Prepares the input image for processing
         """
-        # convention - first dim is all the images, second dim is the augmenations
+        # convention - first dim is all the images_remove, second dim is the augmenations
         self.images_torch = [[np_to_torch(aug).to(dtype=self.dtype, device=self.device)
                               for aug in create_augmentations(image)] for image in self.images]
 
@@ -393,7 +402,7 @@ class ManyImagesWatermarkNoHint(object):
     def _init_nets(self):
         """
         Initializes the neural networks for dehazing:
-        - clean_net: Predicts clean images.
+        - clean_net: Predicts clean images_remove.
         - mask_net: Predicts the mask .
         -right_net: Predicts the watermark
         """
@@ -480,7 +489,7 @@ class ManyImagesWatermarkNoHint(object):
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = True
         optimizer = torch.optim.Adam(self.parameters, lr=self.learning_rate)
-        for j in range(self.num_iter_per_step):
+        for j in range(self.num_iterations):
             optimizer.zero_grad()
             self._optimization_closure(j)
             self._finalize_iteration(j)
@@ -490,7 +499,6 @@ class ManyImagesWatermarkNoHint(object):
         self._update_result_closure()
         self._step_plot_closure()
 
-
     def _update_result_closure(self):
         """
         Update best result
@@ -498,7 +506,7 @@ class ManyImagesWatermarkNoHint(object):
         self.current_result = ManyImageWatermarkResult(cleans=[torch_to_np(c) for c in self.clean_nets_outputs],
                                                        watermark=torch_to_np(self.watermark_net_output),
                                                        mask=torch_to_np(self.mask_net_output),
-                                                       ssim=self.current_ssim)
+                                                       ssim=self.current_ssim, psnr=self.current_psnr)
         self.best_result = self.current_result
 
     def _get_augmentation(self, iteration):
@@ -517,16 +525,16 @@ class ManyImagesWatermarkNoHint(object):
             iteration (int): iteration number
         """
         aug = self._get_augmentation(iteration)
-        if iteration == self.num_iter_per_step - 1:
+
+        if iteration == self.num_iterations - 1:
             reg_noise_std = 0
             aug = 0
         else:
-            reg_noise_std = (1 / 1000.) * min(iteration // (self.num_iter_per_step // 10), 10)
-        # creates left_net_inputs and right_net_inputs by adding small noise
+            reg_noise_std = (1 / 1000.) * min(iteration // 100, 10)
+        # adding small noise each iteration
         clean_nets_inputs = [clean_net_input[aug] + (clean_net_input[aug].clone().normal_() * reg_noise_std)
                              for clean_net_input in self.clean_nets_inputs]
-        watermark_net_input = self.watermark_net_input[
-            aug]
+        watermark_net_input = self.watermark_net_input[aug]
         mask_net_input = self.mask_net_input[aug]
         # applies the nets
         self.clean_nets_outputs = [clean_net(clean_net_input) for clean_net, clean_net_input
@@ -540,18 +548,24 @@ class ManyImagesWatermarkNoHint(object):
                                for clean_net_output, image_torch in zip(self.clean_nets_outputs, self.images_torch))
         self.total_loss.backward(retain_graph=True)
 
-    def _finalize_iteration(self,iteration):
-        if iteration % 4 != 0 or iteration == self.num_iter_per_step - 1:
+    def _finalize_iteration(self, iteration):
+        if iteration == 0 or iteration % 4 != 0 or iteration == self.num_iterations - 1:
             clean_out_nps = [torch_to_np(clean_net_output) for clean_net_output in self.clean_nets_outputs]
             watermark_out_np = torch_to_np(self.watermark_net_output)
             mask_out_np = torch_to_np(self.mask_net_output)
-            self.current_ssim = 0
+            self.current_ssim = []
+            self.current_psnr = []
             for i, clean_out_np in enumerate(clean_out_nps):
-                ssim = structural_similarity(self.images[i].astype(mask_out_np.dtype), clean_out_np * (1 - mask_out_np) +
-                                                 mask_out_np * watermark_out_np, channel_axis=0,
+                reconstruc = clean_out_np * (1 - mask_out_np) + mask_out_np * watermark_out_np
+                ssim = structural_similarity(self.images[i].astype(mask_out_np.dtype),
+                                             reconstruc, channel_axis=0,
                                              data_range=1.0)
+                psnr = compute_psnr(self.images[i].astype(mask_out_np.dtype),
+                                    reconstruc, data_range=1.0)
                 self.ssims[i].append(ssim)
-                self.current_ssim += ssim
+                self.psnrs[i].append(psnr)
+                self.current_ssim.append(ssim)
+                self.current_psnr.append(psnr)
 
     def _iteration_plot_closure(self, iteration):
         """
@@ -560,9 +574,10 @@ class ManyImagesWatermarkNoHint(object):
             iteration (int): iteration number
         """
         sys.stdout.write(
-            f'\r Iteration {iteration},'
-            f'Loss {self.total_loss.item():.6f} , '
-            f'SSIM (SSIM1 + SSIM2 +...) {self.current_ssim:.3f} ')
+            f'\r Iteration {iteration}, '
+            f'Loss {self.total_loss.item():.5f}, '
+            f'{", ".join([f"SSIM-{i + 1}: {v:.3f}" for i, v in enumerate(self.current_ssim)])}, '
+            f'{", ".join([f"PSNR-{i + 1}: {v:.3f}" for i, v in enumerate(self.current_psnr)])}')
         sys.stdout.flush()
         if iteration % self.show_every == self.show_every - 1:
             clean_out_nps = [torch_to_np(clean_net_output) for clean_net_output in self.clean_nets_outputs]
@@ -587,13 +602,21 @@ class ManyImagesWatermarkNoHint(object):
                             [np.clip(torch_to_np(self.watermark_net_output) * torch_to_np(self.mask_net_output) +
                                      (1 - torch_to_np(self.mask_net_output)) * torch_to_np(clean_net_output),
                                      0, 1), image])
+
     def finalize(self):
         """
         Save results at the end of the process
         """
 
-        for image_name, clean, image, ssim_list in zip(self.images_names, self.best_result.cleans, self.images,self.ssims):
-            save_graph(image_name + "_ssim",ssim_list,self.num_iter_per_step)
+        for i, (image_name, clean, image, ssim_list, psnr_list) in enumerate(zip(
+                self.images_names,
+                self.best_result.cleans,
+                self.images,
+                self.ssims,
+                self.psnrs)):
+            save_graph(image_name + "_ssim", ssim_list, self.num_iterations, title="SSIM" + f"-{i + 1}")
+            save_graph(image_name + "_psnr", psnr_list, self.num_iterations, title="PSNR" + f"-{i + 1}")
+
             save_image(image_name + "_clean_finalize", clean)
             save_image(image_name + "_original", image)
 
@@ -613,6 +636,7 @@ class ManyImagesWatermarkNoHint(object):
             save_image(img_name + "_post_process_final", final)
         obtained_watermark[obtained_watermark < 0.1] = 0
         save_image("post_process_watermark", obtained_watermark)
+
 
 def main_remove_watermark_hint(img_path, hint_path, conf_params={}):
     image = prepare_image(img_path)
@@ -636,18 +660,22 @@ def main_remover_watermark_many_images(imgs_paths, imgs_names, conf_params={}):
 if __name__ == "__main__":
     set_gpu_or_cpu_and_dtype(use_gpu=True, torch_dtype=torch.float32)
 
-    imgs_paths = ['images/fotolia1.jpg', 'images/fotolia2.jpg', 'images/fotolia3.jpg']
+    imgs_paths = ['images/watermark/fotolia1.png', 'images/watermark/fotolia2.png', 'images/watermark/fotolia3.png']
     imgs_names = ['f1', 'f2', 'f3']
     conf_params = {
-        "num_iter_per_step": 1000,
+        "num_iterations": 4000,
         "show_every": 500
     }
+    start = time.time()
     main_remover_watermark_many_images(imgs_paths, imgs_names, conf_params)
+    print(f'\nTime: {time.time() - start} seconds')
 
     conf_params = {
-        "num_iter_first_step": 1000,
-        "num_iter_second_step": 1000,
+        "num_iter_first_step": 4000,
+        "num_iter_second_step": 7000,
         "show_every": 500
     }
-
-    main_remove_watermark_hint('images/fotolia.jpg', 'images/fotolia_watermark.jpg', conf_params=conf_params)
+    start = time.time()
+    main_remove_watermark_hint('images/watermark/fotolia.png', 'images/watermark/fotolia_watermark.png',
+                               conf_params=conf_params)
+    print(f'\nTime: {time.time() - start} seconds')

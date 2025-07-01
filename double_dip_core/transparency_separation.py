@@ -1,7 +1,9 @@
 import sys
+import time
 from collections import namedtuple
 
 import torch.nn as nn
+from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 from skimage.metrics import structural_similarity
 
 from double_dip_core.net import skip, set_gpu_or_cpu_and_dtype
@@ -10,7 +12,7 @@ from double_dip_core.net.noise import get_noise
 from double_dip_core.utils.image_io import *
 
 TwoImagesSeparationResult = namedtuple("TwoImagesSeparationResult",
-                                       ["reflection", "transmission", "ssim", "alpha1", "alpha2"])
+                                       ["reflection", "transmission", "ssim", "psnr", "alpha1", "alpha2"])
 
 
 class TwoImagesSeparation(object):
@@ -21,7 +23,8 @@ class TwoImagesSeparation(object):
         self.image1 = image1
         self.image2 = image2
         self.plot_during_training = plot_during_training
-        self.ssims = [[],[]]
+        self.ssims = [[], []]
+        self.psnrs = [[], []]
         self.show_every = show_every
         self.image1_name = image1_name
         self.image2_name = image2_name
@@ -42,8 +45,8 @@ class TwoImagesSeparation(object):
         self.transmission_out = None
         self.current_result = None
         self.best_result = None
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -126,7 +129,6 @@ class TwoImagesSeparation(object):
         Generates input noise maps for the networks.
         """
         input_type = 'noise'
-        # input_type = 'meshgrid'
         dtype = self.dtype
         device = self.device
         self.reflection_net_input = get_noise(self.input_depth, input_type,
@@ -160,7 +162,7 @@ class TwoImagesSeparation(object):
 
     def optimize(self):
         """
-        Performs the optimization process to separate the images.
+        Performs the optimization process to separate the images_remove.
         - Uses Adam optimizer with the specified learning rate.
         """
         torch.backends.cudnn.enabled = True
@@ -225,30 +227,42 @@ class TwoImagesSeparation(object):
         transmission_out_np = np.clip(torch_to_np(self.transmission_out), 0, 1)
         alpha1 = np.clip(torch_to_np(self.current_alpha1), 0, 1)
         alpha2 = np.clip(torch_to_np(self.current_alpha2), 0, 1)
-        v = alpha1 * reflection_out_np + (1 - alpha1) * transmission_out_np
-        ssim1 = structural_similarity(self.image1.astype(v.dtype), v, channel_axis=0,
-                                     data_range=1.0)
-        ssim2 = structural_similarity(self.image2.astype(v.dtype), alpha2 * reflection_out_np + (1 - alpha2) * transmission_out_np, channel_axis=0,
-                                     data_range=1.0)
+        v1 = alpha1 * reflection_out_np + (1 - alpha1) * transmission_out_np
+        v2 = alpha2 * reflection_out_np + (1 - alpha2) * transmission_out_np
+
+        ssim1 = structural_similarity(self.image1.astype(v1.dtype), v1, channel_axis=0,
+                                      data_range=1.0)
+        ssim2 = structural_similarity(self.image2.astype(v2.dtype),
+                                      v2, channel_axis=0,
+                                      data_range=1.0)
+        psnr1 = compute_psnr(self.image1.astype(v1.dtype), v1, data_range=1.0)
+        psnr2 = compute_psnr(self.image2.astype(v2.dtype), v2, data_range=1.0)
+
         self.ssims[0].append(ssim1)
         self.ssims[1].append(ssim2)
 
+        self.psnrs[0].append(psnr1)
+        self.psnrs[1].append(psnr2)
+
         self.current_result = TwoImagesSeparationResult(reflection=reflection_out_np, transmission=transmission_out_np,
-                                                        ssim=ssim1+ssim2, alpha1=alpha1, alpha2=alpha2)
-        if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
+                                                        ssim=[ssim1, ssim2], psnr=[psnr1, psnr2], alpha1=alpha1,
+                                                        alpha2=alpha2)
+        if self.best_result is None or sum(self.best_result.ssim) / len(self.best_result.ssim) < sum(
+                self.current_result.ssim) / len(self.current_result.ssim):
             self.best_result = self.current_result
 
     def _plot_closure(self, iteration):
         """
-        Displays training progress by printing loss and saving intermediate images.
+        Displays training progress by printing loss and saving intermediate images_remove.
         Args:
             iteration (int): iteration number
         """
 
-        sys.stdout.write(f'\rIteration {iteration} '
-                         f'Loss {self.total_loss.item():.5f} '
-                         f'Exclusion {self.exclusion.item():.5f} '
-                         f'SSIM (SSIM1 + SSIM2): {self.current_result.ssim:.3f}')
+        sys.stdout.write(f'\rIteration {iteration + 1}, '
+                         f'Loss: {self.total_loss.item():.5f}, '
+                         f'Mask-1: {self.current_result.alpha1.item():.2f}, Mask-2: {self.current_result.alpha2.item():.2f}, '
+                         f'SSIM-1: {self.current_result.ssim[0]:.3f}, SSIM-2: {self.current_result.ssim[1]:.3f}, '
+                         f'PSNR-1: {self.current_result.psnr[0]:.3f}, PSNR-2: {self.current_result.psnr[1]:.3f}')
         sys.stdout.flush()
         if iteration % self.show_every == self.show_every - 1:
             plot_image_grid("reflection_transmission_{}".format(iteration),
@@ -262,11 +276,13 @@ class TwoImagesSeparation(object):
         """
         Finalizes the separation process and saves the results.
         """
-        save_graph(self.image1_name + "_ssim", self.ssims[0],self.num_iter) # Remove this or put it everywhere
-        save_graph(self.image2_name + "_ssim", self.ssims[1],self.num_iter) # Remove this or put it everywhere
+        save_graph(self.image1_name + "_ssim", self.ssims[0], self.num_iter, title="SSIM-1")
+        save_graph(self.image2_name + "_ssim", self.ssims[1], self.num_iter, title="SSIM-2")
+        save_graph(self.image1_name + "_psnr", self.psnrs[0], self.num_iter, title="PSNR-1")
+        save_graph(self.image2_name + "_psnr", self.psnrs[1], self.num_iter, title="PSNR-2")
 
-        save_image(self.image1_name + "_reflection", self.best_result.reflection)
-        save_image(self.image1_name + "_transmission", self.best_result.transmission)
+        save_image("finalize_layer_reflection", self.best_result.reflection)
+        save_image("finalize_layer_transmission", self.best_result.transmission)
         save_image(self.image1_name + "_original", self.image1)
         save_image(self.image2_name + "_original", self.image2)
 
@@ -277,6 +293,7 @@ class Separation(object):
         self.image = image
         self.plot_during_training = plot_during_training
         self.ssims = []
+        self.psnrs = []
         self.show_every = show_every
         self.image_name = image_name
         self.num_iter = num_iter
@@ -294,8 +311,8 @@ class Separation(object):
         self.transmission_out = None
         self.current_result = None
         self.best_result = None
-        self.device =torch.get_default_device()
-        self.dtype =torch.get_default_dtype()
+        self.device = torch.get_default_device()
+        self.dtype = torch.get_default_dtype()
         self._init_all()
 
     def _init_all(self):
@@ -416,7 +433,7 @@ class Separation(object):
         if iteration == self.num_iter - 1:
             reg_noise_std = 0
         elif iteration < 1000:
-            reg_noise_std = (1 / 1000.) * max((iteration // 100),1000)
+            reg_noise_std = (1 / 1000.) * (iteration // 100)
         else:
             reg_noise_std = 1 / 1000.
         aug = self._get_augmentation(iteration)
@@ -443,25 +460,31 @@ class Separation(object):
         if iteration == 0 or iteration % 2 == 1 or iteration == self.num_iter - 1:
             reflection_out_np = np.clip(torch_to_np(self.reflection_out), 0, 1)
             transmission_out_np = np.clip(torch_to_np(self.transmission_out), 0, 1)
-            ssim = structural_similarity(self.images[0].astype(reflection_out_np.dtype), reflection_out_np + transmission_out_np, channel_axis=0,
-                                     data_range=1.0)
+            reconstruc = reflection_out_np + transmission_out_np
+            ssim = structural_similarity(self.images[0].astype(reflection_out_np.dtype),
+                                         reconstruc, channel_axis=0,
+                                         data_range=1.0)
+            psnr = compute_psnr(self.images[0].astype(reflection_out_np.dtype),
+                                reconstruc, data_range=1.0)
             self.ssims.append(ssim)
+            self.psnrs.append(psnr)
             self.current_result = SeparationResult(reflection=reflection_out_np, transmission=transmission_out_np,
-                                                   ssim=ssim)
+                                                   ssim=ssim, psnr=psnr)
             if self.best_result is None or self.best_result.ssim < self.current_result.ssim:
                 self.best_result = self.current_result
 
     def _plot_closure(self, iteration):
         """
-        Displays training progress by printing loss and saving intermediate images.
+        Displays training progress by printing loss and saving intermediate images_remove.
         Args:
             iteration (int): iteration number
         """
 
         sys.stdout.write(
-            f'\rIteration {iteration}    '
-            f'Loss {self.total_loss.item():.5f}  '
-            f'SSIM: {self.current_result.ssim:.3f}')
+            f'\rIteration {iteration}, '
+            f'Loss: {self.total_loss.item():.5f}, '
+            f'SSIM: {self.current_result.ssim:.3f}, '
+            f'PSNR: {self.current_result.psnr:.3f}')
         sys.stdout.flush()
         if iteration % self.show_every == self.show_every - 1:
             plot_image_grid("left_right_{}".format(iteration),
@@ -471,7 +494,9 @@ class Separation(object):
         """
         Finalizes the transparency separation process and saves the results.
         """
-        save_graph(self.image_name + "_ssim", self.ssims,self.num_iter)
+        save_graph(self.image_name + "_ssim", self.ssims, self.num_iter, title="SSIM")
+        save_graph(self.image_name + "_psnr", self.psnrs, self.num_iter, title="PSNR")
+
         save_image(self.image_name + "_reflection", self.best_result.reflection)
         save_image(self.image_name + "_transmission", self.best_result.transmission)
         save_image(self.image_name + "_reflection2", 2 * self.best_result.reflection)
@@ -479,7 +504,7 @@ class Separation(object):
         save_image(self.image_name + "_original", self.images[0])
 
 
-SeparationResult = namedtuple("SeparationResult", ['reflection', 'transmission', 'ssim'])
+SeparationResult = namedtuple("SeparationResult", ['reflection', 'transmission', 'ssim', 'psnr'])
 
 
 def main_two_images_separation(path_input1, path_input2, conf_params):
@@ -496,7 +521,7 @@ def main_separation(path_input1, path_input2, conf_params):
     t1 = prepare_image(path_input1)
     t2 = prepare_image(path_input2)
 
-    # Resize to its min if images have diferent size
+    # Resize to its min if images_remove have diferent size
     min_height = min(t1.shape[0], t2.shape[0])
     min_width = min(t1.shape[1], t2.shape[1])
     t1 = cv2.resize(t1, (min_width, min_height))
@@ -510,16 +535,20 @@ def main_separation(path_input1, path_input2, conf_params):
 if __name__ == "__main__":
     set_gpu_or_cpu_and_dtype(use_gpu=True, torch_dtype=torch.float32)
 
-    # Separation from two images
-    conf_params = {
-        "num_iter": 1000,
-        "show_every":500
-    }
-    #main_two_images_separation('images/input1.jpg', 'images/input2.jpg', conf_params)
-
-    # Separation of textures
+    # Separation from two images_remove
     conf_params = {
         "num_iter": 4000,
-        "show_every":500
+        "show_every": 500
     }
-    main_separation('images/texture1.jpg', 'images/texture2.jpg', conf_params)
+    start = time.time()
+    main_two_images_separation('images/transparency/transparency_0.30.png', 'images/transparency/transparency_0.70.png',
+                               conf_params)
+    print(f'\nTime: {time.time() - start} seconds')
+    # Separation of textures
+    conf_params = {
+        "num_iter": 8000,
+        "show_every": 500
+    }
+    start = time.time()
+    main_separation('images/transparency/texture1.png', 'images/transparency/texture2.png', conf_params)
+    print(f'\nTime: {time.time() - start} seconds')

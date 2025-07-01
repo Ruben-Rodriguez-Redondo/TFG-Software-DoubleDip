@@ -9,7 +9,7 @@ button_params = get_button_params()
 
 
 def get_segmentation_ui(menu_ui):
-    with gr.Column(visible=False,variant="panel", elem_classes="gr-column") as sementation_separation_ui:
+    with gr.Column(visible=False, variant="panel", elem_classes="gr-column") as sementation_separation_ui:
         gr.Markdown("<h1 class='centered-header'>SEGMENTATION</h1>")
         with gr.Row(elem_classes="row-toggles"):
             toggle_gpu = gr.Checkbox(label="Use GPU", value=True, elem_classes="toggles")

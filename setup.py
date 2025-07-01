@@ -10,7 +10,7 @@ setup(
     name="DoubleDIP",
     version="1.0.0",
     packages=find_packages(),
-    author_email="r.rodriguezr.2020@alumnos.urjc.es",
+    author="Rubén Rodríguez Redondo",
     description="DoubleDIP functionalities module with gradio interface",
     url="https://github.com/Ruben-Rodriguez-Redondo/TFG-Software-DoubleDip",
     classifiers=[

@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 import gradio as gr
@@ -62,7 +63,10 @@ def main_segmentation_gradio(image_path, conf_params):
     """
     image = prepare_image(image_path)
     image_name = os.path.splitext(os.path.basename(image_path))[0]
-    s = Segmentation(image_name, image, **conf_params)
+    progress = gr.Progress(track_tqdm=False)
+    for _ in progress.tqdm(range(1), desc="Creating saliency-based hints (take less than a few minutes)"):
+        with contextlib.redirect_stdout(open(os.devnull, 'w')):
+            s = Segmentation(image_name, image, **conf_params)
     s_gradio = SegmentationGradio(s)
     yield from s_gradio.optimize_gradio()
 

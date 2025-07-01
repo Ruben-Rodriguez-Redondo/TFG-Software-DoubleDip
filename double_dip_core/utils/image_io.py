@@ -7,8 +7,9 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image
+from skimage.metrics import structural_similarity as ssim
 
-matplotlib.use('agg')
+matplotlib.use('TkAgg')
 
 
 def crop_image(img, d=32):
@@ -59,10 +60,10 @@ def crop_frame(frame, d=32):
 
 def get_image_grid(images_np, nrow=8):
     """
-    Creates a grid from a list of images by concatenating them.
+    Creates a grid from a list of images_remove by concatenating them.
     Args:
-        images_np: List of images as NumPy arrays.
-        nrow: Number of images per row in the grid.
+        images_np: List of images_remove as NumPy arrays.
+        nrow: Number of images_remove per row in the grid.
     Returns:
         NumPy array representing the image grid.
     """
@@ -74,19 +75,19 @@ def get_image_grid(images_np, nrow=8):
 
 def plot_image_grid(name, images_np, interpolation='lanczos', output_path="output/"):
     """
-    Plots and saves a grid of two images.
+    Plots and saves a grid of two images_remove.
     Args:
         name: Filename for saving the grid.
         images_np: List of image NumPy arrays (each should be 3xHxW or 1xHxW).
-        interpolation: Interpolation method for displaying images.
+        interpolation: Interpolation method for displaying images_remove.
         output_path: Directory to save the output image.
     """
     if not os.path.exists(output_path):
         os.makedirs(output_path)
-
+    plt.clf()
     assert len(images_np) == 2
     n_channels = max(x.shape[0] for x in images_np)
-    assert (n_channels == 3) or (n_channels == 1), "images should have 1 or 3 channels"
+    assert (n_channels == 3) or (n_channels == 1), "images_remove should have 1 or 3 channels"
 
     images_np = [x if (x.shape[0] == n_channels) else np.concatenate([x, x, x], axis=0) for x in images_np]
 
@@ -96,8 +97,6 @@ def plot_image_grid(name, images_np, interpolation='lanczos', output_path="outpu
         plt.imshow(grid[0], cmap='gray', interpolation=interpolation)
     else:
         plt.imshow(grid.transpose(1, 2, 0), interpolation=interpolation)
-    # plt.show()
-
     plt.savefig(output_path + "{}.png".format(name))
 
 
@@ -112,10 +111,10 @@ def save_image(name, image_np, output_path="output/"):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     p = np_to_pil(image_np)
-    p.save(output_path + "{}.jpg".format(name))
+    p.save(output_path + "{}.png".format(name))
 
 
-def save_graph(name, graph_lists,num_iters, output_path="output/"):
+def save_graph(name, graph_lists, num_iters, title=None, output_path="output/"):
     """
     Saves a line graph from a list of values.
     Args:
@@ -127,7 +126,6 @@ def save_graph(name, graph_lists,num_iters, output_path="output/"):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     plt.clf()
-    # Check if input is a single list, wrap it in a list for consistency
     if isinstance(graph_lists[0], np.floating):
         graph_lists = [graph_lists]
 
@@ -136,11 +134,12 @@ def save_graph(name, graph_lists,num_iters, output_path="output/"):
         iter_steps = np.linspace(0, num_iters, len(graph_list))
         plt.plot(iter_steps, graph_list, linestyle='-')
 
-    plt.xlabel("Iterations")
-    plt.ylabel("SSIM")
-    plt.title("SSIM vs Iterations")
-    plt.legend([f"SSIM {i + 1}" for i in range(len(graph_lists))])
-    plt.grid(True)
+    plt.xlabel("Iteration", fontsize=16)
+    plt.ylabel(title, fontsize=16)
+    plt.title(f"{title} vs Iteration", fontsize=18)
+    # plt.legend([f"{title} {i + 1}" for i in range(len(graph_lists))])
+    plt.legend([title], fontsize=14)
+    plt.grid(False)
 
     plt.savefig(output_path + name + ".png")
 
@@ -151,7 +150,7 @@ def create_augmentations(np_image):
     Args:
         np_image: np.ndarray, input image.
     Returns:
-        list: Augmented images.
+        list: Augmented images_remove.
     """
     aug = [np_image.copy(), np.rot90(np_image, 1, (1, 2)).copy(),
            np.rot90(np_image, 2, (1, 2)).copy(), np.rot90(np_image, 3, (1, 2)).copy()]
@@ -212,11 +211,11 @@ def prepare_image(file_name):
 
 def save_video(video_name, video_frames, fps, output_path="output/"):
     """
-    Converts a sequence of images into a video.
+    Converts a sequence of images_remove into a video.
     Args:
-        images_dir: str, directory containing the images.
+        images_dir: str, directory containing the images_remove.
         name: str, output video name.
-        gray: bool, whether to convert images to grayscale.
+        gray: bool, whether to convert images_remove to grayscale.
     """
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -225,25 +224,26 @@ def save_video(video_name, video_frames, fps, output_path="output/"):
 
     # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
-    out = cv2.VideoWriter(output_path + video_name + ".mp4", fourcc, fps, (width, height))
+    output_path = output_path + video_name + "_dehazed.mp4"
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     for frame in video_frames:
         frame = np.array(np_to_pil(frame))
         out.write(frame)
     out.release()
+    return output_path
 
 
-def prepare_video(file_name):
+def prepare_video(video_path):
     """
     Loads a video file and prepares it
     for processing dividing it into its frames.
     Args:
-        file_name: Name of the video file.
-        folder: Directory where the video file is located.
+        video_path: Path of the video file.
     Returns:
         A cropped and normalized video tensor.
     """
-    cap = cv2.VideoCapture(file_name)
+    cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frames = []
     while cap.isOpened():
@@ -256,6 +256,89 @@ def prepare_video(file_name):
     frames = frames.transpose(0, 3, 1, 2)
     frames = frames.astype(np.float32) / 255.0
     return frames, fps
+
+
+def video_to_frames(video_path):
+    """Loads a video and returns a list of frames in BGR uint8 format."""
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+    cap.release()
+    return frames
+
+
+def compute_tssim(frames):
+    """
+    Returns a list of SSIM values between consecutive frame pairs (tSSIM).
+    Values closer to 1 indicate higher temporal coherence.
+    """
+    tssim_vals = []
+    for f1, f2 in zip(frames[:-1], frames[1:]):
+        # Normalize to 0–1 and use channel_axis (skimage >= 0.19)
+        ssim_val = ssim(f1 / 255.0, f2 / 255.0, channel_axis=2, data_range=1.0)
+        tssim_vals.append(ssim_val)
+    return np.array(tssim_vals)
+
+
+def analyze_tssim_videos(video_paths, output_path="output/"):
+    """
+    Computes and plots tSSIM values, mean, and frame-to-frame fluctuation
+    for a list of videos. Saves the figure to disk.
+    """
+    titles = ["Haze video", "Dehaze video"]
+    assert len(video_paths) == len(titles), "Number of titles must match number of videos."
+
+    tssim_list = []
+    stats_list = []
+
+    for j, path in enumerate(video_paths):
+        frames = video_to_frames(path)
+        tssim_vals = compute_tssim(frames)
+        fluct = np.abs(np.diff(tssim_vals)).mean()
+        mean_val = tssim_vals.mean()
+
+        print(f"\nVideo: {titles[j]}")
+        print(f"tSSIM mean:     {mean_val:.4f}")
+        print(f"Mean fluctuation (|ΔtSSIM|): {fluct:.6f}")
+        print("-" * 40)
+
+        tssim_list.append(tssim_vals)
+        stats_list.append((mean_val, fluct))
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_path, exist_ok=True)
+
+    # Plotting
+    fig, axs = plt.subplots(len(video_paths), 1, figsize=(10, 3 * len(video_paths)), sharex=False)
+    if len(video_paths) == 1:
+        axs = [axs]  # Handle case with only one subplot
+
+    for i, (tssim_vals, stats) in enumerate(zip(tssim_list, stats_list)):
+        mean_val, fluct = stats
+        axs[i].plot(tssim_vals, color='tab:blue')
+        axs[i].set_ylim(0, 1)
+        axs[i].set_ylabel("tSSIM")
+        axs[i].set_title(titles[i])
+        axs[i].grid(False)
+        axs[i].set_xlabel("Frame")
+
+        # Text box with stats
+        textstr = f"Mean tSSIM: {mean_val:.4f}\n Mean |ΔtSSIM|: {fluct:.4f}"
+        axs[i].text(0.98, 0.05, textstr, transform=axs[i].transAxes,
+                    fontsize=10, verticalalignment='bottom',
+                    horizontalalignment='right',
+                    bbox=dict(facecolor='white', edgecolor='gray', boxstyle='round,pad=0.3'))
+
+    plt.tight_layout()
+
+    # Save figure
+    output_file = os.path.join(output_path, "tSSIM_comparison.png")
+    plt.savefig(output_file, dpi=300)
+    plt.close()
 
 
 def pil_to_np(img_PIL, with_transpose=True):

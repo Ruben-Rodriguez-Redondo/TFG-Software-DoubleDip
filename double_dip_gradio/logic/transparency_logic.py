@@ -87,7 +87,7 @@ def main_two_images_separation_gradio(path_input1, path_input2, conf_params):
     input2_name = os.path.splitext(os.path.basename(path_input2))[0]
     t = TwoImagesSeparation(input1_name, input2_name, input1, input2, **conf_params)
     t_gradio = TwoImagesSeparationGradio(t)
-    yield from t_gradio.optimize_gradio("Separating two ambiguous images")
+    yield from t_gradio.optimize_gradio("Separating two ambiguous images_remove")
 
 
 def main_separation_gradio(path_input1, path_input2, conf_params):

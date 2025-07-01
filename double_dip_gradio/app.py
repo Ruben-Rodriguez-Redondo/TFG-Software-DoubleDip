@@ -16,11 +16,11 @@ imgs = get_app_images("assets/images")
 gallery_params = get_gallery_params()
 button_params = get_button_params()
 
-with gr.Blocks(css_paths=css,theme=gr.themes.Default()) as app:
+with gr.Blocks(css_paths=css, theme=gr.themes.Ocean()) as app:
     with gr.Column(visible=True, min_width=0, variant="panel", elem_classes="gr-column") as menu_ui:
-        gr.Markdown("<h1 class='centered-header'>MAIN FUNCTIONALITIES</h1>")
+        gr.Markdown("<h1 class='centered-header'>DOUBLE-DIP APPLICATIONS</h1>")
 
-        button_1 = gr.Button("Segmentación", variant="primary", **button_params)
+        button_1 = gr.Button("Segmentation", variant="primary", **button_params)
         with gr.Row():
             gr.Gallery(value=imgs["seg"], label="Segmentación", columns=4, **gallery_params)
 
@@ -51,7 +51,6 @@ with gr.Blocks(css_paths=css,theme=gr.themes.Default()) as app:
 
     for button, ui in buttons:
         button.click(fn=change_scene, inputs=None, outputs=[menu_ui, ui])
-
 
 
 def launch():

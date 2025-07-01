@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from double_dip_core.net.downsampler import Downsampler
 
@@ -113,6 +112,7 @@ def conv(in_f, out_f, kernel_size, stride=1, bias=True, pad='zero', downsample_m
 class GrayscaleLayer(nn.Module):
     def __init__(self):
         super(GrayscaleLayer, self).__init__()
+
     def forward(self, x):
         return torch.mean(x, 1, keepdim=True)
 
