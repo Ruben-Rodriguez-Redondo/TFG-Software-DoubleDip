@@ -98,6 +98,10 @@ run the following command to make the changes effective automatically.
 ```
 pip install -e .
 ```
+Or, if it is not going to be used as a package, it is only necessary to install the requirements:
+```
+pip install -r requirements.txt 
+```
 
 `Optional`: At least in my Pycharm community version (2024.2.5) even if the packages are correctly installed, and the
 code works fine
