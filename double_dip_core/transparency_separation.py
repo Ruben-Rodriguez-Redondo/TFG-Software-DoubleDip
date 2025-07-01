@@ -521,7 +521,7 @@ def main_separation(path_input1, path_input2, conf_params):
     t1 = prepare_image(path_input1)
     t2 = prepare_image(path_input2)
 
-    # Resize to its min if images_remove have diferent size
+    # Resize to its min if images have diferent size
     min_height = min(t1.shape[0], t2.shape[0])
     min_width = min(t1.shape[1], t2.shape[1])
     t1 = cv2.resize(t1, (min_width, min_height))
